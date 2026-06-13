@@ -330,7 +330,7 @@ deps: go_deps link_external_deps
 go_deps:
 	git submodule update --init
 	cp CMakeLists-brotli.txt submodules/brotli/CMakeLists.txt
-	go mod vendor
+	GOPROXY=direct go mod vendor
 ifdef USE_LZO
 	if [ "$$(uname)" = "Darwin" ]; then \
 		perl -pi -e 's|(#cgo LDFLAGS:) .*|$$1 -llzo2|' vendor/github.com/cyberdelia/lzo/lzo.go; \
