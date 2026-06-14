@@ -1,0 +1,32 @@
+{
+  "postgres_full_backup_s3": {
+    "provider": "s3",
+    "database": "postgres",
+    "backup_type": "full",
+    "backup_size": 1073741824,
+    "files_backed": 42,
+    "compression": "lz4",
+    "encryption": "aes-256-gcm",
+    "checksum": "abc123..."
+  },
+  "postgres_incremental_s3": {
+    "provider": "s3",
+    "database": "postgres",
+    "backup_type": "incremental",
+    "backup_size": 104857600,
+    "files_backed": 8,
+    "compression": "lz4",
+    "encryption": "aes-256-gcm",
+    "checksum": "def456..."
+  },
+  "postgres_full_backup_gcs": {
+    "provider": "gcs",
+    "database": "postgres",
+    "backup_type": "full",
+    "backup_size": 1073741824,
+    "files_backed": 42,
+    "compression": "lz4",
+    "encryption": "csek",
+    "checksum": "ghi789..."
+  }
+}
