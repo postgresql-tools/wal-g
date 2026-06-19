@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/lateos-ai/wal-g/internal"
+	"github.com/lateos-ai/wal-g/internal/checksum"
 	pg_errors "github.com/lateos-ai/wal-g/internal/databases/postgres/errors"
 	"github.com/lateos-ai/wal-g/internal/databases/postgres/orioledb"
 	"github.com/lateos-ai/wal-g/internal/ioextensions"
@@ -115,6 +116,8 @@ func (p *TarBallFilePackerImpl) PackFileIntoTar(cfi *internal.ComposeFileInfo, t
 
 	errorGroup, _ := errgroup.WithContext(context.Background())
 
+	calc := checksum.CreateCalculator()
+
 	if p.options.verifyPageChecksums {
 		var secondReadCloser io.ReadCloser
 
@@ -137,14 +140,14 @@ func (p *TarBallFilePackerImpl) PackFileIntoTar(cfi *internal.ComposeFileInfo, t
 
 			return nil
 		})
-	} else {
-		p.files.AddFile(cfi.Header, cfi.FileInfo, cfi.IsIncremented)
 	}
+
+	csc := checksum.CreateReaderWithChecksum(fileReadCloser, calc)
 
 	errorGroup.Go(func() error {
 		defer utility.LoggedClose(fileReadCloser, "")
 
-		packedFileSize, err := internal.PackFileTo(tarBall, cfi.Header, fileReadCloser)
+		packedFileSize, err := internal.PackFileTo(tarBall, cfi.Header, csc)
 
 		if err != nil {
 			return errors.Wrap(err, "PackFileIntoTar: operation failed")
@@ -157,7 +160,27 @@ func (p *TarBallFilePackerImpl) PackFileIntoTar(cfi *internal.ComposeFileInfo, t
 		return nil
 	})
 
-	return errorGroup.Wait()
+	err = errorGroup.Wait()
+	if err != nil {
+		return err
+	}
+
+	sha256 := calc.Checksum()
+	if p.options.verifyPageChecksums {
+		if val, ok := p.files.GetUnderlyingMap().Load(cfi.Header.Name); ok {
+			desc := val.(internal.BackupFileDescription)
+			desc.SHA256 = sha256
+			p.files.AddFileDescription(cfi.Header.Name, desc)
+		}
+	} else {
+		p.files.AddFileDescription(cfi.Header.Name, internal.BackupFileDescription{
+			IsIncremented: cfi.IsIncremented,
+			MTime:         cfi.FileInfo.ModTime(),
+			SHA256:        sha256,
+		})
+	}
+
+	return nil
 }
 
 func (p *TarBallFilePackerImpl) createFileReadCloser(cfi *internal.ComposeFileInfo) (io.ReadCloser, error) {

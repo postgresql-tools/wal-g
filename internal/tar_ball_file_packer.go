@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/wal-g/tracelog"
 
+	"github.com/lateos-ai/wal-g/internal/checksum"
 	"github.com/lateos-ai/wal-g/internal/fsutil"
 	"github.com/lateos-ai/wal-g/internal/ioextensions"
 	"github.com/lateos-ai/wal-g/internal/limiters"
@@ -72,11 +73,12 @@ func (p *RegularTarBallFilePacker) PackFileIntoTar(cfi *ComposeFileInfo, tarBall
 		}
 	}
 
-	p.files.AddFile(cfi.Header, cfi.FileInfo, cfi.IsIncremented)
-
 	defer utility.LoggedClose(fileReadCloser, "")
 
-	packedFileSize, err := PackFileTo(tarBall, cfi.Header, fileReadCloser)
+	calc := checksum.CreateCalculator()
+	csc := checksum.CreateReaderWithChecksum(fileReadCloser, calc)
+
+	packedFileSize, err := PackFileTo(tarBall, cfi.Header, csc)
 
 	if err != nil {
 		return errors.Wrap(err, "PackFileIntoTar: operation failed")
@@ -85,6 +87,12 @@ func (p *RegularTarBallFilePacker) PackFileIntoTar(cfi *ComposeFileInfo, tarBall
 	if packedFileSize != cfi.Header.Size {
 		return newTarSizeError(packedFileSize, cfi.Header.Size)
 	}
+
+	p.files.AddFileDescription(cfi.Header.Name, BackupFileDescription{
+		IsIncremented: cfi.IsIncremented,
+		MTime:         cfi.FileInfo.ModTime(),
+		SHA256:        calc.Checksum(),
+	})
 
 	return nil
 }
