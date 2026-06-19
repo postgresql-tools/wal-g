@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install deps
-        run: sudo apt-get install liblzo2-dev brotli libsodium-dev
+        run: sudo apt-get install liblzo2-dev brotli
       - uses: actions/checkout@v6
       - name: Set up Go 1.x
         uses: actions/setup-go@v6
