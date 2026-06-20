@@ -133,6 +133,7 @@ func HandleBackupVerify(
 ) int {
 	startTime := time.Now()
 	result := &BackupVerifyResult{
+		Pass:                true,
 		BackupName:          backupName,
 		Tier:                Tier1,
 		SentinelExists:      true,
