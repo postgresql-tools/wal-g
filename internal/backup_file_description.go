@@ -13,7 +13,7 @@ type BackupFileDescription struct {
 	MTime         time.Time
 	CorruptBlocks *CorruptBlocksInfo `json:",omitempty"`
 	UpdatesCount  uint64
-	SHA256        string             `json:"sha256,omitempty"`
+	SHA256        string `json:"sha256,omitempty"`
 }
 
 func NewBackupFileDescription(isIncremented, isSkipped bool, modTime time.Time) *BackupFileDescription {
