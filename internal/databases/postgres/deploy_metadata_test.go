@@ -127,6 +127,50 @@ func TestMergeDeployMetadataIntoUserData_NonMapUserData(t *testing.T) {
 	}
 }
 
+func TestExtractDeployMetadata_NilUserData(t *testing.T) {
+	_, ok := ExtractDeployMetadata(nil)
+	if ok {
+		t.Error("expected false for nil UserData")
+	}
+}
+
+func TestExtractDeployMetadata_NoDeployKey(t *testing.T) {
+	userData := map[string]interface{}{
+		"some_other_key": "value",
+	}
+	_, ok := ExtractDeployMetadata(userData)
+	if ok {
+		t.Error("expected false when deploy metadata key is missing")
+	}
+}
+
+func TestExtractDeployMetadata_Success(t *testing.T) {
+	meta := DeployMetadata{GitCommit: "abc123", GitBranch: "main", DeployID: "deploy-42"}
+	userData := MergeDeployMetadataIntoUserData(meta, nil)
+
+	extracted, ok := ExtractDeployMetadata(userData)
+	if !ok {
+		t.Fatal("expected true when deploy metadata is present")
+	}
+	if extracted.GitCommit != "abc123" {
+		t.Errorf("expected git_commit 'abc123', got '%s'", extracted.GitCommit)
+	}
+	if extracted.GitBranch != "main" {
+		t.Errorf("expected git_branch 'main', got '%s'", extracted.GitBranch)
+	}
+	if extracted.DeployID != "deploy-42" {
+		t.Errorf("expected deploy_id 'deploy-42', got '%s'", extracted.DeployID)
+	}
+}
+
+func TestExtractDeployMetadata_WrongType(t *testing.T) {
+	userData := "not a map"
+	_, ok := ExtractDeployMetadata(userData)
+	if ok {
+		t.Error("expected false for non-map UserData")
+	}
+}
+
 func TestDeployMetadata_JSONRoundTrip(t *testing.T) {
 	meta := DeployMetadata{GitCommit: "abc123", GitBranch: "main", DeployID: "deploy-42"}
 	userData := MergeDeployMetadataIntoUserData(meta, nil)
@@ -148,6 +192,14 @@ func TestDeployMetadata_JSONRoundTrip(t *testing.T) {
 
 	if dm["git_commit"] != "abc123" {
 		t.Errorf("expected git_commit='abc123', got '%v'", dm["git_commit"])
+	}
+
+	extracted, ok := ExtractDeployMetadata(decoded)
+	if !ok {
+		t.Fatal("expected ExtractDeployMetadata to succeed after JSON round trip")
+	}
+	if extracted.GitCommit != "abc123" {
+		t.Errorf("expected git_commit after round trip 'abc123', got '%s'", extracted.GitCommit)
 	}
 }
 

@@ -35,6 +35,30 @@ func CollectDeployMetadata(gitCommit, gitBranch, deployID string) DeployMetadata
 	return meta
 }
 
+func ExtractDeployMetadata(userData interface{}) (DeployMetadata, bool) {
+	if userData == nil {
+		return DeployMetadata{}, false
+	}
+	m, ok := userData.(map[string]interface{})
+	if !ok {
+		return DeployMetadata{}, false
+	}
+	raw, ok := m[deployMetadataKey]
+	if !ok {
+		return DeployMetadata{}, false
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return DeployMetadata{}, false
+	}
+	var meta DeployMetadata
+	err = json.Unmarshal(data, &meta)
+	if err != nil {
+		return DeployMetadata{}, false
+	}
+	return meta, true
+}
+
 func MergeDeployMetadataIntoUserData(meta DeployMetadata, userData interface{}) interface{} {
 	metaMap := make(map[string]interface{})
 	metaJSON, err := json.Marshal(meta)

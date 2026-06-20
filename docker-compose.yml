@@ -639,6 +639,11 @@ services:
     command: /tmp/tests/pgbackrest_backup_fetch_test.sh
     <<: *s3_common_depends
 
+  pg10_backup_verify_test:
+    <<: *pg10_test_common
+    container_name: wal-g_pg10_backup_verify_test
+    command: /tmp/tests/backup_verify_test.sh
+
   orioledb:
     build:
       dockerfile: docker/orioledb/Dockerfile
