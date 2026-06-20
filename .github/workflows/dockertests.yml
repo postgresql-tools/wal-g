@@ -94,7 +94,7 @@ jobs:
       fail-fast: false
     steps:
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y liblzo2-dev libsodium-dev pkg-config
+        run: sudo apt-get install -y liblzo2-dev
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v6

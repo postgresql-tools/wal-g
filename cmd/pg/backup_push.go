@@ -36,6 +36,12 @@ const (
 
 	addUserDataFlag = "add-user-data"
 
+	gitCommitFlag = "git-commit"
+
+	gitBranchFlag = "git-branch"
+
+	deployIDFlag = "deploy-id"
+
 	withoutFilesMetadataFlag = "without-files-metadata"
 
 	permanentShorthand = "p"
@@ -147,6 +153,10 @@ var (
 
 			tracelog.ErrorLogger.FatalfOnError("Failed to unmarshal the provided UserData: %s", err)
 
+			deployMeta := postgres.CollectDeployMetadata(gitCommit, gitBranch, deployID)
+
+			userData = postgres.MergeDeployMetadataIntoUserData(deployMeta, userData)
+
 			arguments := postgres.NewBackupArguments(uploader, dataDirectory, utility.BaseBackupPath,
 
 				permanent, verifyPageChecksums || viper.GetBool(conf.VerifyPageChecksumsSetting),
@@ -184,6 +194,12 @@ var (
 	deltaFromUserData = ""
 
 	userDataRaw = ""
+
+	gitCommit = ""
+
+	gitBranch = ""
+
+	deployID = ""
 
 	withoutFilesMetadata = false
 )
@@ -256,6 +272,18 @@ func init() {
 	backupPushCmd.Flags().StringVar(&userDataRaw, addUserDataFlag,
 
 		"", "Write the provided user data to the backup sentinel and metadata files.")
+
+	backupPushCmd.Flags().StringVar(&gitCommit, gitCommitFlag,
+
+		"", "Git commit SHA that produced this backup (auto-detected if not set)")
+
+	backupPushCmd.Flags().StringVar(&gitBranch, gitBranchFlag,
+
+		"", "Git branch name that produced this backup (auto-detected if not set)")
+
+	backupPushCmd.Flags().StringVar(&deployID, deployIDFlag,
+
+		"", "Deploy/job ID (e.g., GitHub Actions run ID)")
 
 	backupPushCmd.Flags().BoolVar(&withoutFilesMetadata, withoutFilesMetadataFlag,
 

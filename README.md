@@ -32,16 +32,16 @@ This is a maintained fork of the [original WAL-G project](https://github.com/gol
 ### Installation
 
 \\\ash
-# Homebrew (macOS)
-brew tap lateos-ai/homebrew-wal-g
-brew install wal-g
 
-# Docker
-docker pull lateos/wal-g:latest
+# Homebrew (macOS) - coming soon
+# brew tap postgresql-tools/wal-g
+# brew install wal-g
+
+# Docker - coming soon
+# docker pull ghcr.io/postgresql-tools/wal-g:latest
 
 # Kubernetes (Helm)
-helm repo add lateos-ai https://lateos-ai.github.io/helm-charts
-helm install wal-g lateos-ai/wal-g --namespace postgres
+helm install wal-g ./helm/wal-g --namespace postgres
 \\\
 
 ### Configure & Backup
@@ -68,7 +68,7 @@ wal-g backup-fetch latest /tmp/restore
 - S3 object format unchanged
 - Drop-in replacement
 
-[View compatibility test results](https://github.com/lateos-ai/wal-g/actions)
+[View compatibility test results](https://github.com/postgresql-tools/wal-g/actions)
 
 ## Features
 
@@ -77,8 +77,8 @@ wal-g backup-fetch latest /tmp/restore
 - 🔒 **Encrypted Backups** — AES-256-GCM with customer-managed keys (KMS)
 - 🚀 **Point-in-Time Recovery** — Continuous WAL archiving + incremental backups
 - 🧪 **Automated Testing** — Compatibility tests run on every commit
-- 📊 **Monitoring Integration** — Real-time backup status in dashboards
-- 🔄 **Disaster Recovery** — Automated recovery testing (RTO/RPO validation)
+- 📊 **Monitoring Integration** — Prometheus metrics export (walg-exporter)
+- 🔄 **Disaster Recovery** — Point-in-time recovery and WAL archiving
 
 ## Documentation
 
@@ -86,14 +86,14 @@ wal-g backup-fetch latest /tmp/restore
 - [Configuration Reference](docs/CONFIGURATION.md)
 - [Backup & Recovery](docs/BACKUP-RECOVERY.md)
 - [Kubernetes Deployment](helm/wal-g/README.md)
-- [Monitoring Integration](docs/integrations/monitoring.md)
+- [Monitoring Integration](cmd/pg/exporter/README.md)
 - [Migration from Original WAL-G](docs/MIGRATION.md)
 
 ## Community
 
-- 📖 [Documentation](https://github.com/lateos-ai/wal-g/wiki)
-- 💬 [GitHub Discussions](https://github.com/lateos-ai/wal-g/discussions)
-- 🐛 [Report Issues](https://github.com/lateos-ai/wal-g/issues)
+- 📖 [Documentation](https://github.com/postgresql-tools/wal-g/wiki)
+- 💬 [GitHub Discussions](https://github.com/postgresql-tools/wal-g/discussions)
+- 🐛 [Report Issues](https://github.com/postgresql-tools/wal-g/issues)
 - 🔒 [Security Policy](SECURITY.md)
 
 ## Maintenance Commitment
@@ -103,7 +103,7 @@ We maintain WAL-G because PostgreSQL backups are critical infrastructure:
 - **Daily deployments** — New features every 1–2 weeks
 - **24-hour CVE SLA** — Critical security patches within 24 hours
 - **100% test coverage** — All changes tested against v0.14.1
-- **Transparency** — [View weekly metrics](https://github.com/lateos-ai/wal-g/actions)
+- **Transparency** — [View weekly metrics](https://github.com/postgresql-tools/wal-g/actions)
 
 ## Contributing Notice
 

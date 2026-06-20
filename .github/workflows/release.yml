@@ -56,7 +56,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y liblzo2-dev brotli libsodium-dev curl git cmake build-essential tzdata
+          apt-get install -y liblzo2-dev brotli curl git cmake build-essential tzdata
 
       - name: Checkout code
         uses: actions/checkout@v6
@@ -138,7 +138,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y liblzo2-dev brotli libsodium-dev cmake build-essential tzdata
+          sudo apt-get install -y liblzo2-dev brotli cmake build-essential tzdata
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
