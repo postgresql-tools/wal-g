@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	backupVerifyUse           = "backup-verify [backup_name]"
-	backupVerifyShort         = "Verify backup content integrity by re-reading tar partitions from storage"
-	backupVerifyLong          = `Run metadata-only (Tier 1) or spot-check (Tier 2 with --sample) verification of a backup.
+	backupVerifyUse   = "backup-verify [backup_name]"
+	backupVerifyShort = "Verify backup content integrity by re-reading tar partitions from storage"
+	backupVerifyLong  = `Run metadata-only (Tier 1) or spot-check (Tier 2 with --sample) verification of a backup.
 
 Tier 1 (default): verifies sentinel integrity, manifest completeness, checksum
 coverage, deploy metadata presence, and WAL chain continuity. No data blocks are
@@ -26,25 +26,25 @@ taken before checksum support (pre-PR1), only readability is verified.
 Passing backup-verify does NOT guarantee Postgres starts cleanly on restore.
 This tool narrows the population of restore failures catchable cheaply; it is a
 complement to periodic full restore tests, not a replacement.`
-	sampleFlag       = "sample"
-	sampleShortFlag  = "s"
-	sampleDescription = "Percentage of tar partitions to download and verify (Tier 2). Default 0 (Tier 1 only)."
-	seedFlag         = "seed"
-	seedDescription  = "Random seed for reproducible Tier 2 sampling. Default 0 (time-based)."
-	targetLSNFlag    = "target-lsn"
-	targetLSNDescription = "End LSN for WAL chain verification scope."
-	targetTimeFlag   = "target-time"
+	sampleFlag            = "sample"
+	sampleShortFlag       = "s"
+	sampleDescription     = "Percentage of tar partitions to download and verify (Tier 2). Default 0 (Tier 1 only)."
+	seedFlag              = "seed"
+	seedDescription       = "Random seed for reproducible Tier 2 sampling. Default 0 (time-based)."
+	targetLSNFlag         = "target-lsn"
+	targetLSNDescription  = "End LSN for WAL chain verification scope."
+	targetTimeFlag        = "target-time"
 	targetTimeDescription = "End timestamp (RFC3339) for WAL chain verification scope."
-	formatFlag       = "format"
-	formatDescription = "Output format: text or json. Default: text."
+	formatFlag            = "format"
+	formatDescription     = "Output format: text or json. Default: text."
 )
 
 var (
-	backupVerifySample    int
-	backupVerifySeed      int64
-	backupVerifyTargetLSN string
+	backupVerifySample     int
+	backupVerifySeed       int64
+	backupVerifyTargetLSN  string
 	backupVerifyTargetTime string
-	backupVerifyFormat    string
+	backupVerifyFormat     string
 
 	backupVerifyCmd = &cobra.Command{
 		Use:   backupVerifyUse,

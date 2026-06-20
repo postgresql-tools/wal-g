@@ -33,12 +33,12 @@ func (t BackupVerifyTier) MarshalText() ([]byte, error) {
 }
 
 type VerifyFileResult struct {
-	Name            string `json:"name"`
-	StoredSHA256    string `json:"stored_sha256,omitempty"`
-	ComputedSHA256  string `json:"computed_sha256,omitempty"`
-	Match           bool   `json:"match"`
-	NoStoredChecksum bool  `json:"no_stored_checksum,omitempty"`
-	ReadError       string `json:"read_error,omitempty"`
+	Name             string `json:"name"`
+	StoredSHA256     string `json:"stored_sha256,omitempty"`
+	ComputedSHA256   string `json:"computed_sha256,omitempty"`
+	Match            bool   `json:"match"`
+	NoStoredChecksum bool   `json:"no_stored_checksum,omitempty"`
+	ReadError        string `json:"read_error,omitempty"`
 }
 
 type ChecksumCoverage struct {
@@ -48,34 +48,34 @@ type ChecksumCoverage struct {
 }
 
 type BackupVerifyResult struct {
-	BackupName      string           `json:"backup_name"`
-	Tier            BackupVerifyTier `json:"tier"`
-	Pass            bool             `json:"pass"`
+	BackupName string           `json:"backup_name"`
+	Tier       BackupVerifyTier `json:"tier"`
+	Pass       bool             `json:"pass"`
 
-	SentinelExists  bool             `json:"sentinel_exists"`
-	SentinelError   string           `json:"sentinel_error,omitempty"`
+	SentinelExists bool   `json:"sentinel_exists"`
+	SentinelError  string `json:"sentinel_error,omitempty"`
 
-	FilesMetadataExists bool         `json:"files_metadata_exists"`
+	FilesMetadataExists bool `json:"files_metadata_exists"`
 
-	MissingParts    []string         `json:"missing_parts,omitempty"`
+	MissingParts []string `json:"missing_parts,omitempty"`
 
-	DeployMetadata  interface{}      `json:"deploy_metadata"`
+	DeployMetadata interface{} `json:"deploy_metadata"`
 
 	ChecksumCoverage ChecksumCoverage `json:"checksum_coverage"`
 
-	WALCheckAvailable bool           `json:"wal_check_available"`
-	WALCheckDetails  string           `json:"wal_check_details,omitempty"`
-	WALGaps          []string         `json:"wal_gaps,omitempty"`
+	WALCheckAvailable bool     `json:"wal_check_available"`
+	WALCheckDetails   string   `json:"wal_check_details,omitempty"`
+	WALGaps           []string `json:"wal_gaps,omitempty"`
 
-	SamplePercent     int             `json:"sample_percent,omitempty"`
-	ActualSamplePct   float64         `json:"actual_sample_pct,omitempty"`
-	SampledParts      int             `json:"sampled_parts,omitempty"`
-	TotalParts        int             `json:"total_parts,omitempty"`
-	FileResults       []VerifyFileResult `json:"file_results,omitempty"`
-	Tier2Pass         *bool           `json:"tier2_pass,omitempty"`
+	SamplePercent   int                `json:"sample_percent,omitempty"`
+	ActualSamplePct float64            `json:"actual_sample_pct,omitempty"`
+	SampledParts    int                `json:"sampled_parts,omitempty"`
+	TotalParts      int                `json:"total_parts,omitempty"`
+	FileResults     []VerifyFileResult `json:"file_results,omitempty"`
+	Tier2Pass       *bool              `json:"tier2_pass,omitempty"`
 
-	Elapsed           string          `json:"elapsed"`
-	Error             string          `json:"error,omitempty"`
+	Elapsed string `json:"elapsed"`
+	Error   string `json:"error,omitempty"`
 }
 
 type verifyTarInterpreter struct {
@@ -104,8 +104,8 @@ func (v *verifyTarInterpreter) Interpret(reader io.Reader, header *tar.Header) e
 	fd, ok := v.filesMeta.Files[header.Name]
 	if !ok || fd.SHA256 == "" {
 		v.results = append(v.results, VerifyFileResult{
-			Name:            header.Name,
-			ComputedSHA256:  computed,
+			Name:             header.Name,
+			ComputedSHA256:   computed,
 			NoStoredChecksum: true,
 		})
 		return nil
@@ -133,12 +133,12 @@ func HandleBackupVerify(
 ) int {
 	startTime := time.Now()
 	result := &BackupVerifyResult{
-		BackupName:         backupName,
-		Tier:               Tier1,
-		SentinelExists:     true,
+		BackupName:          backupName,
+		Tier:                Tier1,
+		SentinelExists:      true,
 		FilesMetadataExists: true,
-		DeployMetadata:     "none",
-		WALCheckAvailable:  true,
+		DeployMetadata:      "none",
+		WALCheckAvailable:   true,
 	}
 
 	backup, err := resolveBackup(rootFolder, backupName)
@@ -278,7 +278,7 @@ func checkWALChain(rootFolder storage.Folder, backupName string, result *BackupV
 	}
 
 	searchParams := BackupSearchParams{
-		FindEarliestBackup: false,
+		FindEarliestBackup:  false,
 		SpecifiedBackupName: &backupName,
 	}
 
@@ -366,7 +366,7 @@ func runTier2(backup *Backup, filesMeta FilesMetadataDto, samplePct int, seed in
 		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
 
-	sampleCount := (len(tarParts) * samplePct + 99) / 100
+	sampleCount := (len(tarParts)*samplePct + 99) / 100
 	if sampleCount <= 0 {
 		sampleCount = 1
 	}
@@ -449,8 +449,12 @@ func writeBackupVerifyOutput(result *BackupVerifyResult, format string, output i
 			fmt.Fprintf(output, `{"error":%q}`, err.Error())
 			return
 		}
-		output.Write(data)
-		output.Write([]byte("\n"))
+		if _, err := output.Write(data); err != nil {
+			tracelog.ErrorLogger.Printf("failed to write JSON output: %v", err)
+		}
+		if _, err := output.Write([]byte("\n")); err != nil {
+			tracelog.ErrorLogger.Printf("failed to write JSON output: %v", err)
+		}
 	default:
 		writeTextOutput(result, output)
 	}
