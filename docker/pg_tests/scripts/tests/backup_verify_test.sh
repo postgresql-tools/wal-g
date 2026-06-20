@@ -11,7 +11,7 @@ set -e -x
 #   4. Run wal-g backup-verify --sample 100 (Tier 2) -- should detect mismatch
 
 . /tmp/tests/test_functions/prepare_config.sh
-prepare_config "/tmp/tests/configs/full_backup_test_config.json"
+prepare_config "/tmp/configs/full_backup_test_config.json"
 
 initdb ${PGDATA}
 
