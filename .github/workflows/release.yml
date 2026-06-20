@@ -59,7 +59,7 @@ jobs:
           apt-get install -y liblzo2-dev brotli curl git cmake build-essential tzdata
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v6
@@ -128,7 +128,7 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:

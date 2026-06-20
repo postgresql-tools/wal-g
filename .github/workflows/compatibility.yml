@@ -1,4 +1,4 @@
-﻿name: Compatibility Test
+name: Compatibility Test
 on:
   push:
     branches: [ main ]
@@ -12,7 +12,7 @@ jobs:
   compatibility:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-go@v6
       with:
         go-version: '1.25'
