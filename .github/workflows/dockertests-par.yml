@@ -97,6 +97,7 @@ jobs:
         "make gp_test",
         "make cloudberry_test",
         "make st_test",
+        "make TEST=\"pg10_backup_verify_test\" pg_integration_test",
         "make TEST=\"pg10_pgbackrest_backup_fetch_test\" pg_integration_test",
         "make etcd_test",
         "make orioledb_integration_test",

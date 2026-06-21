@@ -1,0 +1,24 @@
+{
+  "Files": {
+    "global/pg_control": {
+      "IsIncremented": false,
+      "IsSkipped": false,
+      "MTime": "2026-06-15T10:00:00Z"
+    },
+    "base/1/1234": {
+      "IsIncremented": false,
+      "IsSkipped": false,
+      "MTime": "2026-06-15T10:00:01Z"
+    }
+  },
+  "TarFileSets": {
+    "part_000.tar.lz4": ["global/pg_control", "base/1/1234"]
+  },
+  "UserData": {
+    "walg_deploy_metadata": {
+      "git_commit": "abc123def4567890abcdef1234567890abcdef12",
+      "git_branch": "feature/PR2-backup-verify",
+      "deploy_id": "deploy-20260619-01"
+    }
+  }
+}
