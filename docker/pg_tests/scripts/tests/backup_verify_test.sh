@@ -32,7 +32,7 @@ wal-g --config=${TMP_CONFIG} backup-push ${PGDATA}
 # Step 2: Tier 1 verification should pass
 wal-g --config=${TMP_CONFIG} backup-verify --format json 2>&1 | tee /tmp/verify_tier1.json
 # Check that output contains expected fields
-grep -q '"pass":true' /tmp/verify_tier1.json
+grep -q '"pass": true' /tmp/verify_tier1.json
 
 pkill -9 postgres
 rm -rf "${PGDATA}"
@@ -49,7 +49,7 @@ fi
 wal-g --config=${TMP_CONFIG} backup-verify --sample 100 --format json 2>&1 | tee /tmp/verify_tier2.json
 
 # Check that the verification detected a mismatch
-if grep -q '"pass":true' /tmp/verify_tier2.json; then
+if grep -q '"pass": true' /tmp/verify_tier2.json; then
   # If we corrupted a part, we expect pass=false for Tier 2
   # (but the corruption may not have worked if mc isn't available)
   echo "WARNING: backup-verify Tier 2 passed - corruption may not have been applied"
