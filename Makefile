@@ -463,7 +463,11 @@ go_deps:
 	cp CMakeLists-brotli.txt submodules/brotli/CMakeLists.txt
 	go mod vendor
 ifdef USE_LZO
-	perl -pi -e 's|(#cgo LDFLAGS:) .*|$$1 -Wl,-Bstatic -llzo2 -Wl,-Bdynamic|' vendor/github.com/cyberdelia/lzo/lzo.go
+	if [ "$$(uname)" = "Darwin" ]; then \
+		perl -pi -e 's|(#cgo LDFLAGS:) .*|$$1 -llzo2|' vendor/github.com/cyberdelia/lzo/lzo.go; \
+	else \
+		perl -pi -e 's|(#cgo LDFLAGS:) .*|$$1 -Wl,-Bstatic -llzo2 -Wl,-Bdynamic|' vendor/github.com/cyberdelia/lzo/lzo.go; \
+	fi
 endif
 
 link_external_deps: link_brotli link_libsodium
