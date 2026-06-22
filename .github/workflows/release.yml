@@ -155,6 +155,12 @@ jobs:
       - name: Make deps
         run: make deps
 
+      - name: Set Homebrew CGO flags (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "CGO_CFLAGS=-I$(brew --prefix lzo)/include" >> $GITHUB_ENV
+          echo "CGO_LDFLAGS=-L$(brew --prefix lzo)/lib" >> $GITHUB_ENV
+
       - name: Build WAL-G
         run: |
           make pg_build
