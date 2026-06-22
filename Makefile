@@ -463,7 +463,7 @@ go_deps:
 	cp CMakeLists-brotli.txt submodules/brotli/CMakeLists.txt
 	go mod vendor
 ifdef USE_LZO
-	sed -i 's|\(#cgo LDFLAGS:\) .*|\1 -Wl,-Bstatic -llzo2 -Wl,-Bdynamic|' vendor/github.com/cyberdelia/lzo/lzo.go
+	perl -pi -e 's|(#cgo LDFLAGS:) .*|$$1 -Wl,-Bstatic -llzo2 -Wl,-Bdynamic|' vendor/github.com/cyberdelia/lzo/lzo.go
 endif
 
 link_external_deps: link_brotli link_libsodium
