@@ -1,6 +1,6 @@
 # WAL-G: PostgreSQL WAL Archiving & Backups
 
-**Actively maintained fork of [golang-migrate/wal-g](https://github.com/golang-migrate/wal-g)**
+**Actively maintained fork of [wal-g/wal-g](https://github.com/wal-g/wal-g)**
 
 PostgreSQL WAL archiving, point-in-time recovery, and disaster recovery.
 
@@ -12,7 +12,7 @@ PostgreSQL WAL archiving, point-in-time recovery, and disaster recovery.
 
 ## Attribution
 
-This is a maintained fork of the [original WAL-G project](https://github.com/golang-migrate/wal-g).
+This is a maintained fork of the [original WAL-G project](https://github.com/wal-g/wal-g).
 
 - Original License: Apache 2.0
 - Fork License: MIT
@@ -115,7 +115,11 @@ Any pull requests opened will be automatically closed without review.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+This project is a fork of [WAL-G](https://github.com/wal-g/wal-g).
+Inherited code is licensed under the [Apache License 2.0](LICENSE)
+(upstream copyright: Citus Data Inc. — see [NOTICE](NOTICE)).
+Code authored by Lateos is licensed under the [MIT License](LICENSE-MIT).
+See [COPYRIGHT.md](COPYRIGHT.md) for a path-by-path license map.
 
 ---
 

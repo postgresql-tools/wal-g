@@ -1,3 +1,5 @@
+# Modified in the lateos-ai/wal-g fork. Derived from wal-g/wal-g (Apache-2.0). See NOTICE.
+
 name: Release workflow for tagged versions
 on:
   push:
@@ -82,7 +84,7 @@ jobs:
         run: mv main/${{ matrix.db }}/wal-g wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}
 
       - name: Compress WAL-G binary
-        run: tar --owner=0 --group=0 -zcvf wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}.tar.gz wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}
+        run: tar --owner=0 --group=0 -zcvf wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}.tar.gz wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }} LICENSE LICENSE-MIT NOTICE COPYRIGHT.md
 
       - name: Calculate checksum
         run: sha256sum wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }} > wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}.sha256
@@ -98,6 +100,10 @@ jobs:
             wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}.tar.gz
             wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}.sha256
             wal-g-${{ matrix.db }}-${{ matrix.os }}-${{ steps.determine-arch.outputs.arch }}.tar.gz.sha256
+            LICENSE
+            LICENSE-MIT
+            NOTICE
+            COPYRIGHT.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -174,5 +180,9 @@ jobs:
           files: |
             ${{ matrix.bin_name }}
             ${{ matrix.bin_name }}.sha256
+            LICENSE
+            LICENSE-MIT
+            NOTICE
+            COPYRIGHT.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

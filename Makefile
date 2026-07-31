@@ -1,3 +1,5 @@
+# Modified in the lateos-ai/wal-g fork. Derived from wal-g/wal-g (Apache-2.0). See NOTICE.
+
 export GOEXPERIMENT=jsonv2
 
 MAIN_PG_PATH := main/pg

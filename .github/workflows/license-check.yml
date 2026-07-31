@@ -1,0 +1,50 @@
+name: license-check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify license files
+        run: |
+          set -euo pipefail
+          # LICENSE must be the canonical Apache License 2.0 text (as published at apache.org)
+          echo "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  LICENSE" | sha256sum -c -
+          grep -q "Copyright (c) 2026 Lateos" LICENSE-MIT
+          test -s NOTICE
+          test -s COPYRIGHT.md
+          # LICENSE.md (truncated upstream notice) must not reappear
+          test ! -e LICENSE.md
+          echo "license files OK"
+
+      - name: Verify modified-inherited files carry change notices
+        run: |
+          set -euo pipefail
+          # Fork point commit 7e9f9055 is an ancestor of every branch in this repository.
+          fail=0
+          for f in $(git diff --name-only --diff-filter=M 7e9f9055 HEAD); do
+            if [ "$f" = "go.sum" ]; then continue; fi
+            if ! grep -qF "Modified in the lateos-ai/wal-g fork" "$f"; then
+              echo "missing modified-notice: $f"; fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Verify fork-authored files carry MIT headers
+        run: |
+          set -euo pipefail
+          fail=0
+          for f in $(git diff --name-only --diff-filter=A 7e9f9055 HEAD -- '*.go' '*.c'); do
+            if ! grep -qF "Copyright (c) 2026 Lateos. Licensed under the MIT License" "$f"; then
+              echo "missing MIT header: $f"; fail=1
+            fi
+          done
+          exit $fail

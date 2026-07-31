@@ -1,4 +1,6 @@
-﻿package main
+﻿// Copyright (c) 2026 Lateos. Licensed under the MIT License. See LICENSE-MIT.
+
+package main
 
 import (
 "testing"

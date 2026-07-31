@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Lateos. Licensed under the MIT License. See LICENSE-MIT.
+
 package checksum
 
 import (
