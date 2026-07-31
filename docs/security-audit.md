@@ -171,6 +171,48 @@ Most of these are transitive dev dependencies and don't affect production.
 
 ---
 
+## 7. Remediation Status (re-verified 2026-07-31)
+
+Re-verified line-by-line against the current tree. The raw scan artifacts
+(`semgrep-report.txt`, `golangci-lint-report.txt`, `SECURITY_FINDINGS_VERIFIED.md`)
+were removed from the repository on this date; this section is the single
+source of truth for SAST findings. golangci-lint results are now additionally
+uploaded to GitHub Code Scanning as SARIF from CI
+([.github/workflows/golangci-lint.yml](../.github/workflows/golangci-lint.yml)).
+
+### Resolved since the 2026-06-09 audit
+
+| Finding | Status |
+|---|---|
+| golangci-lint: 7 findings | All fixed (e.g. `syscall.Syscall6` → `SyscallN` in `internal/multistorage/stats/cache/flock_windows.go:30`, gci/goimports formatting, whitespace) |
+| SQL Server proxy TLS: `InsecureSkipVerify: true` + missing `MinVersion` | Fixed — `internal/databases/sqlserver/backup_import_handler.go:176` now uses `tls.Config{MinVersion: tls.VersionTLS12}`; no `InsecureSkipVerify` remains anywhere in the tree (grep 2026-07-31) |
+
+### Still present (all verified live on 2026-07-31)
+
+| Rule (semgrep) | Count | Locations | Disposition |
+|---|---|---|---|
+| `last-user-is-root` | 3 | `docker/gp_tests/Dockerfile:20`, `docker/cloudberry_tests/Dockerfile:23`, `docker/etcd_tests/Dockerfile:39` | Test containers only. Removed with engine excision (PR-3, PostgreSQL-only refactor) |
+| `unsafe-deserialization-interface` | 2 | `internal/configure.go:499` (`UnmarshalSentinelUserData`), `pkg/storages/s3/session.go:330` (YAML headers) | Accepted: user-data is supplied by the operator who also controls the bucket; no privilege boundary crossed |
+| `use-of-sha1` | 1 | `internal/crypto/envelope/enveloper.go:34` | Key *fingerprint* for logging/identification only, not cryptographic verification; accepted |
+| `avoid-bind-to-all-interfaces` | 1 | `internal/databases/mongo/binary/mongod_runner.go:141` | Test utility; removed with engine excision (PR-3) |
+| `string-formatted-query` | 6 | MySQL: `internal/databases/mysql/mysql.go:49` (`"SELECT @@" + variable`, whitelisted via `allowedMySQLVariables`). SQL Server: `sqlserver.go:221,237,253,697`, `log_restore_handler.go:204,208`, `log_push_handler.go:72,74`, `backup_restore_handler.go:104,142`, `backup_push_handler.go:116,118` (3 use `quoteName()`/`quoteValue()` escaping) | Identifiers come from controlled sources (`allowedMySQLVariables` map / internal DTOs); accepted with above mitigations. MySQL + SQL Server engines removed with engine excision (PR-3) |
+| `missing-ssl-minversion` | 1 | `internal/databases/mysql/mysql.go:203` (`tls.Config{RootCAs: ...}` defaults to TLS 1.2) | MySQL engine removed with engine excision (PR-3) |
+| `use-of-unsafe-block` | 3 | `internal/multistorage/stats/cache/flock_windows.go:30`, `internal/diskwatcher/disk_watcher_windows.go:27-30`, `internal/databases/postgres/paged_file_verifier.go:95` | Required by design (Windows syscall ABI, PostgreSQL page checksum casting); accepted |
+| `math-random-used` | 10 | Production: `internal/profile.go:6`, `internal/storagetools/check.go:8`, `internal/multistorage/stats/alive_checker.go:10`, `pkg/storages/gcs/uploader.go:8`, `pkg/storages/s3/range_reader.go:8`, `internal/databases/postgres/backup_verify_handler.go:12` (fork addition — `backup-verify` sampling). Tests: 4 files | Non-security uses (port choice, jitter, sampling); `crypto/rand` unnecessary; accepted |
+| `use-of-md5` | 2 | `pkg/storages/storage/storage.go:33` (ETag/checksum), `pkg/storages/s3/folder.go:80` (SSE-C key hash, required by AWS S3 SDK) | Protocol-required, not used for authentication; accepted |
+| `avoid-ssh-insecure-ignore-host-key` | 1 | `pkg/storages/sh/storage.go:50` | Only when `SSH_KNOWN_HOSTS` / `SSH_IGNORE_HOST_KEY`-style options are unset; SFTP storage explicitly configured by the operator; documented |
+
+### Summary
+
+- 1 of 37 raw findings confirmed resolved; all others verified still present.
+- None are critical; none involve credentials, hostnames, or developer-machine
+  paths (verified in files and full git history).
+- 10 of 36 remaining findings (bind-all, 6 string-formatted-query, 3
+  last-user-is-root, 1 missing-ssl-minversion) are removed together with the
+  non-PostgreSQL engines in the postgres-only refactor (PR-3).
+
+---
+
 ## Summary
 
 | Category | CRITICAL | HIGH | MEDIUM | LOW |

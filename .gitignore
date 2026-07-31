@@ -57,3 +57,9 @@ tags
 .claude
 AGENTS.md
 .mcp.json
+
+# local scan artifacts (superseded by docs/security-audit.md and CI SARIF uploads)
+golangci-lint-report.txt
+semgrep-report.txt
+SECURITY_FINDINGS_VERIFIED.md
+golangci-lint.sarif

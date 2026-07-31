@@ -11,6 +11,10 @@ env:
   GO_VERSION: "1.25"
   GOEXPERIMENT: jsonv2
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   golangci:
     name: lint
@@ -29,6 +33,12 @@ jobs:
         with:
           # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
           version: v2.12
+          args: --out-format sarif --output golangci-lint.sarif
+      - name: Upload SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: golangci-lint.sarif
+          category: golangci-lint
 
   golangci-exporter:
     name: lint exporter
