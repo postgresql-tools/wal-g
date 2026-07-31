@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/lateos-ai/wal-g/internal"
-	"github.com/lateos-ai/wal-g/internal/databases/greenplum"
+	"github.com/lateos-ai/wal-g/internal/databases/postgres"
 	"github.com/lateos-ai/wal-g/testtools"
 	"github.com/lateos-ai/wal-g/utility"
 )
@@ -143,7 +143,7 @@ func TestOldestNonPermanentSelector(t *testing.T) {
 
 	_ = folder.PutObject(b2, strings.NewReader(string(bytesMeta2)))
 
-	backupSelector := internal.NewOldestNonPermanentSelector(greenplum.NewGenericMetaFetcher())
+	backupSelector := internal.NewOldestNonPermanentSelector(postgres.NewGenericMetaFetcher())
 
 	latestBackup, err := backupSelector.Select(folder)
 
@@ -171,7 +171,7 @@ func TestOldestNonPermanentSelector_ignorePermanentBackups(t *testing.T) {
 
 	_ = folder.PutObject(b2, strings.NewReader(string(bytesMeta2)))
 
-	backupSelector := internal.NewOldestNonPermanentSelector(greenplum.NewGenericMetaFetcher())
+	backupSelector := internal.NewOldestNonPermanentSelector(postgres.NewGenericMetaFetcher())
 
 	latestBackup, err := backupSelector.Select(folder)
 
@@ -181,7 +181,7 @@ func TestOldestNonPermanentSelector_ignorePermanentBackups(t *testing.T) {
 }
 
 func TestOldestNonPermanentSelector_emptyFolder(t *testing.T) {
-	backupSelector := internal.NewOldestNonPermanentSelector(greenplum.NewGenericMetaFetcher())
+	backupSelector := internal.NewOldestNonPermanentSelector(postgres.NewGenericMetaFetcher())
 
 	checkEmptyFolderBehaviour(t, backupSelector)
 }
@@ -201,7 +201,7 @@ func TestUserDataBackupSelector(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	backupSelector, err := internal.NewUserDataBackupSelector(string(byteUserData), greenplum.NewGenericMetaFetcher())
+	backupSelector, err := internal.NewUserDataBackupSelector(string(byteUserData), postgres.NewGenericMetaFetcher())
 
 	assert.NoError(t, err)
 
@@ -235,7 +235,7 @@ func TestUserDataBackupSelector_tooManyBackupsFound(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	backupSelector, err := internal.NewUserDataBackupSelector(string(byteUserData), greenplum.NewGenericMetaFetcher())
+	backupSelector, err := internal.NewUserDataBackupSelector(string(byteUserData), postgres.NewGenericMetaFetcher())
 
 	assert.NoError(t, err)
 
@@ -251,7 +251,7 @@ func TestUserDataBackupSelector_emptyFolder(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	backupSelector, err := internal.NewUserDataBackupSelector(string(byteUserData), greenplum.NewGenericMetaFetcher())
+	backupSelector, err := internal.NewUserDataBackupSelector(string(byteUserData), postgres.NewGenericMetaFetcher())
 
 	assert.NoError(t, err)
 
