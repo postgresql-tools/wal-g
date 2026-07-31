@@ -10,13 +10,12 @@ Please include:
 - Potential impact
 - Suggested fix (if any)
 
-We will respond within 24 hours for critical issues.
+## Handling
 
-## Security Commitments
-
-- **Critical CVEs (CVSS 9.0+):** Fixed within 24 hours
-- **High CVEs (7.0–8.9):** Fixed within 7 days
-- **Medium CVEs (4.0–6.9):** Fixed within 30 days
+Reports are triaged privately by the maintainers. Fixes, when available, are
+published as part of the current release line. We do not commit to response or
+fix timelines. The history of known findings and their resolution status is
+tracked in [docs/security-audit.md](docs/security-audit.md).
 
 ## Supported Versions
 

@@ -1,126 +1,110 @@
-# WAL-G: PostgreSQL WAL Archiving & Backups
+# WAL-G (Lateos fork): PostgreSQL WAL Archiving & Backups
 
-**Actively maintained fork of [wal-g/wal-g](https://github.com/wal-g/wal-g)**
-
-PostgreSQL WAL archiving, point-in-time recovery, and disaster recovery.
-
-✅ **100% backward compatible** with WAL-G v0.14.1
-✅ **Actively maintained** — Security patches within 24 hours
-✅ **Production ready** — Tested on real PostgreSQL infrastructure
-
----
+A maintained fork of [wal-g/wal-g](https://github.com/wal-g/wal-g), forked in
+June 2026 at upstream commit
+[`7e9f9055`](https://github.com/wal-g/wal-g/tree/7e9f90554506c260d08e521b350d0df306062a9e).
+Upstream WAL-G remains actively maintained; this fork exists to maintain the
+v0.14-era codebase with the additions listed below. Teams without a need for
+those additions should use [upstream WAL-G](https://github.com/wal-g/wal-g).
 
 ## Attribution
 
-This is a maintained fork of the [original WAL-G project](https://github.com/wal-g/wal-g).
+This repository is a fork of the [original WAL-G project](https://github.com/wal-g/wal-g).
 
-- Original License: Apache 2.0
-- Fork License: MIT
-- See [NOTICE](NOTICE) for details
-
----
+- Inherited code is licensed under the [Apache License 2.0](LICENSE) (upstream copyright: Citus Data Inc. — see [NOTICE](NOTICE))
+- Code authored by Lateos is licensed under the [MIT License](LICENSE-MIT)
+- See [COPYRIGHT.md](COPYRIGHT.md) for a path-by-path license map and [docs/FORK_PROVENANCE.md](docs/FORK_PROVENANCE.md) for the fork's provenance
 
 ## Status
 
-✅ **Actively Maintained** — Security patches within 24 hours  
-✅ **100% Backward Compatible** — Works with WAL-G v0.14.1 backups  
-✅ **Production Ready** — Tested on real PostgreSQL + S3/GCS/Azure  
-✅ **Kubernetes Native** — Helm charts included  
+- Fork point: upstream commit `7e9f9055` (2026-06-04). Upstream is active — latest release [v3.0.8](https://github.com/wal-g/wal-g/releases/tag/v3.0.8) (January 2026).
+- Fork releases: [4 releases, June–July 2026](https://github.com/postgresql-tools/wal-g/releases).
+- CI: unit tests with the race detector and all compression/encryption drivers ([unittests](.github/workflows/unittests.yml)), `go test -race ./...` ([test](.github/workflows/test.yml)), Windows-native build ([windows-native](.github/workflows/windows-native.yml)), Docker-based integration tests against PostgreSQL 10 and 18, MongoDB 7/8, Redis, MySQL, MariaDB, Greenplum, and etcd ([docker tests](.github/workflows/dockertests-par.yml)), golangci-lint, and license compliance ([license-check](.github/workflows/license-check.yml)). [View runs](https://github.com/postgresql-tools/wal-g/actions).
+- The documentation site is not published yet (see [Roadmap](#roadmap)).
+
+## Fork additions
+
+- **`backup-verify`** — two-tier backup verification (Tier 1: sentinel integrity, manifest completeness, checksum coverage; Tier 2: sampled tar-partition download) — [docs](docs/BACKUP-RECOVERY.md)
+- **Deployment metadata** — `--git-commit`, `--git-branch`, `--deploy-id` flags recorded in backup metadata (`cmd/pg/backup_push.go`)
+- **Checksum inventory** — per-file SHA256 checksums stored at backup time and reported by `backup-verify`
+- **Characterization tests** — golden-file regression detection ([`internal/characterization`](internal/characterization), [`pkg/storages/postgres/characterization_test.go`](pkg/storages/postgres/characterization_test.go))
+- **Dependency hardening** — audited dependency baseline and fix trail — [docs/security-audit.md](docs/security-audit.md)
+- **License compliance CI** — automatic enforcement of the Apache-2.0/MIT structure — [.github/workflows/license-check.yml](.github/workflows/license-check.yml)
+
+## Inherited capabilities (from upstream WAL-G)
+
+- Point-in-time recovery via continuous WAL archiving and incremental backups
+- Storage backends: S3, Google Cloud Storage, Azure, Alibaba OSS, Swift, SSH, and local filesystem — [docs/STORAGES.md](docs/STORAGES.md)
+- Encryption: AWS KMS, Yandex Cloud KMS, OpenPGP, and libsodium — [overview docs](docs/README.md)
+- Monitoring: Prometheus exporter ([cmd/pg/exporter](cmd/pg/exporter/README.md)) and statsd/graphite telemetry
+- `wal-verify` — WAL integrity and timeline verification
 
 ## Quick Start
 
 ### Installation
 
-\\\ash
+Binaries are published with each [release](https://github.com/postgresql-tools/wal-g/releases).
 
-# Homebrew (macOS) - coming soon
-# brew tap postgresql-tools/wal-g
-# brew install wal-g
-
-# Docker - coming soon
-# docker pull ghcr.io/postgresql-tools/wal-g:latest
-
-# Kubernetes (Helm)
-helm install wal-g ./helm/wal-g --namespace postgres
-\\\
+Docker images, a Homebrew formula, and a Helm chart are not yet available (see [Roadmap](#roadmap)).
 
 ### Configure & Backup
 
-\\\ash
-# Set S3 bucket
-export AWS_S3_BUCKET=your-bucket
+```bash
+# Set the storage prefix (example: S3)
+export WALG_S3_PREFIX=s3://your-bucket/wal-g
 export AWS_REGION=us-east-1
 
-# Create backup
+# Create a backup
 wal-g backup-push
 
 # List backups
 wal-g backup-list
 
-# Restore
-wal-g backup-fetch latest /tmp/restore
-\\\
-
-## Compatibility
-
-✅ **100% backward compatible with WAL-G v0.14.1**
-- All CLI flags identical
-- S3 object format unchanged
-- Drop-in replacement
-
-[View compatibility test results](https://github.com/postgresql-tools/wal-g/actions)
-
-## Features
-
-- 🌍 **Multi-Cloud Support** — S3, Google Cloud Storage, Azure Blob Storage, Backblaze B2
-- ☸️ **Kubernetes Native** — DaemonSet + CronJob Helm charts included
-- 🔒 **Encrypted Backups** — AES-256-GCM with customer-managed keys (KMS)
-- 🚀 **Point-in-Time Recovery** — Continuous WAL archiving + incremental backups
-- 🧪 **Automated Testing** — Compatibility tests run on every commit
-- 📊 **Monitoring Integration** — Prometheus metrics export (walg-exporter)
-- 🔄 **Disaster Recovery** — Point-in-time recovery and WAL archiving
+# Restore the latest backup
+wal-g backup-fetch /tmp/restore LATEST
+```
 
 ## Documentation
 
-- [Installation Guide](docs/INSTALLATION.md)
-- [Configuration Reference](docs/CONFIGURATION.md)
 - [Backup & Recovery](docs/BACKUP-RECOVERY.md)
-- [Kubernetes Deployment](helm/wal-g/README.md)
-- [Monitoring Integration](cmd/pg/exporter/README.md)
-- [Migration from Original WAL-G](docs/MIGRATION.md)
+- [PostgreSQL](docs/PostgreSQL.md)
+- [Storage backends](docs/STORAGES.md)
+- [Overview (upstream documentation)](docs/README.md)
+- [Monitoring (Prometheus exporter)](cmd/pg/exporter/README.md)
+- [Security audit trail](docs/security-audit.md)
+- [Fork provenance](docs/FORK_PROVENANCE.md)
 
 ## Community
 
-- 📖 [Documentation](https://github.com/postgresql-tools/wal-g/wiki)
-- 💬 [GitHub Discussions](https://github.com/postgresql-tools/wal-g/discussions)
-- 🐛 [Report Issues](https://github.com/postgresql-tools/wal-g/issues)
-- 🔒 [Security Policy](SECURITY.md)
+- [Report issues](https://github.com/postgresql-tools/wal-g/issues)
+- [Security policy](SECURITY.md)
 
-## Maintenance Commitment
+## Roadmap
 
-We maintain WAL-G because PostgreSQL backups are critical infrastructure:
+Planned, not yet built (no dates committed):
 
-- **Daily deployments** — New features every 1–2 weeks
-- **24-hour CVE SLA** — Critical security patches within 24 hours
-- **100% test coverage** — All changes tested against v0.14.1
-- **Transparency** — [View weekly metrics](https://github.com/postgresql-tools/wal-g/actions)
+- Backblaze B2 storage backend
+- Helm chart
+- Homebrew formula and Docker images
+- Binary-level compatibility test suite against upstream v0.14.x artifacts
+- Automated restore-test tooling (RTO/RPO validation)
+- Published documentation site (mkdocs/readthedocs)
+- Public metrics dashboard (CI and release statistics)
 
-## Contributing Notice
+## Contributing
 
-Thank you for your interest in this project. Please note that we are 
-currently not accepting any external code contributions, pull requests, 
-bug fixes, or feature submissions at this time. 
-
-Any pull requests opened will be automatically closed without review.
+We are currently not accepting external code contributions, pull requests, bug
+fixes, or feature submissions at this time. Any pull requests opened will be
+closed without review. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development workflow.
 
 ## License
 
-This project is a fork of [WAL-G](https://github.com/wal-g/wal-g).
-Inherited code is licensed under the [Apache License 2.0](LICENSE)
-(upstream copyright: Citus Data Inc. — see [NOTICE](NOTICE)).
-Code authored by Lateos is licensed under the [MIT License](LICENSE-MIT).
-See [COPYRIGHT.md](COPYRIGHT.md) for a path-by-path license map.
+Inherited code is licensed under the [Apache License 2.0](LICENSE) (upstream
+copyright: Citus Data Inc. — see [NOTICE](NOTICE)). Code authored by Lateos is
+licensed under the [MIT License](LICENSE-MIT). See [COPYRIGHT.md](COPYRIGHT.md)
+for a path-by-path license map.
 
 ---
 
-**Built by [Lateos](https://lateos.ai) — PostgreSQL infrastructure, simplified.**
+**Maintained by [Lateos](https://lateos.ai)**

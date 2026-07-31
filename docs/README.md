@@ -1,10 +1,6 @@
-# WAL-G
-![Docker-tests-status](https://github.com/wal-g/wal-g/workflows/Docker%20tests/badge.svg)
-![Unit-tests-status](https://github.com/wal-g/wal-g/workflows/Unit%20tests/badge.svg)
-[![Go Report Card](https://goreportcard.com/badge/github.com/wal-g/wal-g)](https://goreportcard.com/report/github.com/wal-g/wal-g)
-[![Documentation Status](https://readthedocs.org/projects/wal-g/badge/?version=latest)](https://wal-g.readthedocs.io/?badge=latest)
+<!-- Modified in the lateos-ai/wal-g fork. Derived from wal-g/wal-g (Apache-2.0). See NOTICE. -->
 
-[This documentation is also available at wal-g.readthedocs.io](https://wal-g.readthedocs.io)
+# WAL-G
 
 WAL-G is an archival restoration tool for PostgreSQL, MySQL/MariaDB, and MS SQL Server (beta for MongoDB and Redis).
 
