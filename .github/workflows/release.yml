@@ -36,7 +36,7 @@ jobs:
     strategy:
       matrix:
         os: [20.04, 22.04, 24.04]
-        db: [pg, mysql, sqlserver, redis, mongo, fdb, gp]
+        db: [pg]
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
       fail-fast: false
     runs-on: ${{ matrix.runner }}
