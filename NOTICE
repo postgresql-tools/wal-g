@@ -1,9 +1,28 @@
-This software includes code from golang-migrate/wal-g
-Original project: https://github.com/golang-migrate/wal-g
+This software is a fork of the WAL-G project.
+
+Upstream repository: https://github.com/wal-g/wal-g
 Original license: Apache License 2.0
-Original copyright: golang-migrate contributors
+Original copyright (as recorded in the upstream LICENSE.md, preserved
+unchanged in this repository as LICENSE.md): Copyright 2017 Citus Data Inc.
+
+Third-party attributions in inherited source headers (e.g. internal/contextio/,
+internal/fsutil/) are preserved in place.
+
+Fork point: upstream commit 7e9f90554506c260d08e521b350d0df306062a9e
+("CI cleanup: remove go get (#2269)", Philip Dubé, 2026-06-04), merged
+into this repository on 2026-06-06.
+
+Summary of modifications made by Lateos (this maintained fork):
+  - Renamed Go module from github.com/wal-g/wal-g to github.com/lateos-ai/wal-g
+  - Added backup-verify command (Tier 1 + Tier 2 verification)
+  - Added --git-commit / --git-branch / --deploy-id metadata flags to backup-push
+  - Added SHA256 checksum storage to backups
+  - Added characterization tests for regression detection
+  - macOS compatibility fixes (Homebrew CGO flags, LZO/libsodium linking)
+  - CI and release workflow fixes
+  - Documentation audits (encryption, security and stability)
 
 Modifications and new code: Copyright (c) 2026 Lateos
 Licensed under MIT License
 
-See LICENSE for full terms.
+See LICENSE.md for full terms.
