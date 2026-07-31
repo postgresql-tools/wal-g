@@ -2,8 +2,8 @@ This software is a fork of the WAL-G project.
 
 Upstream repository: https://github.com/wal-g/wal-g
 Original license: Apache License 2.0
-Original copyright (as recorded in the upstream LICENSE.md, preserved
-unchanged in this repository as LICENSE.md): Copyright 2017 Citus Data Inc.
+Original copyright (as recorded in the upstream LICENSE file, preserved
+in this NOTICE and in COPYRIGHT.md): Copyright 2017 Citus Data Inc.
 
 Third-party attributions in inherited source headers (e.g. internal/contextio/,
 internal/fsutil/) are preserved in place.
@@ -25,4 +25,7 @@ Summary of modifications made by Lateos (this maintained fork):
 Modifications and new code: Copyright (c) 2026 Lateos
 Licensed under MIT License
 
-See LICENSE.md for full terms.
+The upstream project did not ship a NOTICE file; this NOTICE is provided
+by the fork for attribution. The upstream Apache-2.0 license text is in
+LICENSE; the MIT license covering Lateos-authored code is in LICENSE-MIT.
+See COPYRIGHT.md for the path-by-path license map.

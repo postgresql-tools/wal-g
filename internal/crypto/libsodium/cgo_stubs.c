@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Lateos. Licensed under the MIT License. See LICENSE-MIT.
+
 // Weak stub definitions for Go 1.25 cgo DWARF analysis under -mod=vendor.
 // cgo needs compiled C source with function bodies to produce DWARF type
 // information. These weak stubs provide that; the linker prefers the real

@@ -1,3 +1,5 @@
+// Modified in the lateos-ai/wal-g fork. Derived from wal-g/wal-g (Apache-2.0). See NOTICE.
+
 module github.com/lateos-ai/wal-g
 
 go 1.25.7

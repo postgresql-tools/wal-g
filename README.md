@@ -115,7 +115,11 @@ Any pull requests opened will be automatically closed without review.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+This project is a fork of [WAL-G](https://github.com/wal-g/wal-g).
+Inherited code is licensed under the [Apache License 2.0](LICENSE)
+(upstream copyright: Citus Data Inc. — see [NOTICE](NOTICE)).
+Code authored by Lateos is licensed under the [MIT License](LICENSE-MIT).
+See [COPYRIGHT.md](COPYRIGHT.md) for a path-by-path license map.
 
 ---
 

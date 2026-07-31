@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Modified in the lateos-ai/wal-g fork. Derived from wal-g/wal-g (Apache-2.0). See NOTICE.
+
 import socket
 import time
 import sys
