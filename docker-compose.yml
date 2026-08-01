@@ -188,6 +188,94 @@ services:
     container_name: wal-g_pg18_tests_template
     <<: *s3_common_depends
 
+  pg15:
+    build:
+      dockerfile: docker/pg/Dockerfile
+      context: .
+      args:
+        UBUNTU_TAG: "22.04"
+        PG_MAJOR: "15"
+        USE_PGDG: "1"
+        INSTALL_WALE: "0"
+    image: wal-g/pg15
+    container_name: wal-g_pg15
+
+  pg15_tests_template:
+    build:
+      dockerfile: docker/pg_tests/Dockerfile_prefix
+      context: .
+      args:
+        PG_IMAGE: wal-g/pg15:latest
+    image: wal-g/pg15_tests
+    container_name: wal-g_pg15_tests_template
+    <<: *s3_common_depends
+
+  pg16:
+    build:
+      dockerfile: docker/pg/Dockerfile
+      context: .
+      args:
+        UBUNTU_TAG: "22.04"
+        PG_MAJOR: "16"
+        USE_PGDG: "1"
+        INSTALL_WALE: "0"
+    image: wal-g/pg16
+    container_name: wal-g_pg16
+
+  pg16_tests_template:
+    build:
+      dockerfile: docker/pg_tests/Dockerfile_prefix
+      context: .
+      args:
+        PG_IMAGE: wal-g/pg16:latest
+    image: wal-g/pg16_tests
+    container_name: wal-g_pg16_tests_template
+    <<: *s3_common_depends
+
+  pg17:
+    build:
+      dockerfile: docker/pg/Dockerfile
+      context: .
+      args:
+        UBUNTU_TAG: "22.04"
+        PG_MAJOR: "17"
+        USE_PGDG: "1"
+        INSTALL_WALE: "0"
+    image: wal-g/pg17
+    container_name: wal-g_pg17
+
+  pg17_tests_template:
+    build:
+      dockerfile: docker/pg_tests/Dockerfile_prefix
+      context: .
+      args:
+        PG_IMAGE: wal-g/pg17:latest
+    image: wal-g/pg17_tests
+    container_name: wal-g_pg17_tests_template
+    <<: *s3_common_depends
+
+  pg19:
+    build:
+      dockerfile: docker/pg/Dockerfile
+      context: .
+      args:
+        UBUNTU_TAG: "22.04"
+        PG_MAJOR: "19"
+        USE_PGDG: "1"
+        INSTALL_WALE: "0"
+    image: wal-g/pg19
+    container_name: wal-g_pg19
+
+  pg19_tests_template:
+    build:
+      dockerfile: docker/pg_tests/Dockerfile_prefix
+      context: .
+      args:
+        PG_IMAGE: wal-g/pg19:latest
+    image: wal-g/pg19_tests
+    container_name: wal-g_pg19_tests_template
+    <<: *s3_common_depends
+
   pg10_test_common: &pg10_test_common
     image: wal-g/pg10_tests
     user: postgres
