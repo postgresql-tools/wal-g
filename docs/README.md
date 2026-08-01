@@ -375,7 +375,7 @@ WAL-G relies heavily on unit tests. These tests do not require S3 configuration 
 export USE_BROTLI=1
 make unittest
 ```
-For more information on testing, please consult [test](test), [testtools](testtools) and `unittest` section in [Makefile](Makefile).
+For more information on testing, please consult the `unittest` section in [Makefile](../Makefile).
 
 WAL-G will perform a round-trip compression/decompression test that generates a directory for data (e.g., data...), compressed files (e.g., compressed), and extracted files (e.g., extracted). These directories will only get cleaned up if the files in the original data directory match the files in the extracted one.
 
