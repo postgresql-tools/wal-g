@@ -26,7 +26,6 @@ jobs:
           # prone. Repo-relative links are always checked.
           args: >-
             --no-progress
-            --exclude-mail
             --exclude 'https://github\.com/wal-g/wal-g/.*'
             --exclude 'https://github\.com/postgresql-tools/wal-g/.*'
             --exclude 'https://github\.com/stephane-klein/playground-postgresql-walg/.*'
