@@ -3,7 +3,7 @@
 export GOEXPERIMENT=jsonv2
 
 MAIN_PG_PATH := main/pg
-DOCKER_COMMON := golang ubuntu ubuntu_22_04 s3
+DOCKER_COMMON := golang ubuntu ubuntu_22_04 ubuntu_24_04 s3
 CMD_FILES = $(wildcard cmd/**/*.go)
 PKG_FILES = $(wildcard internal/*.go internal/**/*.go internal/**/**/*.go internal/**/**/**/*.go)
 TEST_FILES = $(wildcard test/*.go testtools/*.go)

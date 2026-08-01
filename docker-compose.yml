@@ -34,6 +34,13 @@ services:
     image: wal-g/ubuntu:22.04
     container_name: wal-g_ubuntu_22_04
 
+  ubuntu_24_04:
+    build:
+      dockerfile: ./docker/ubuntu/Dockerfile_24_04
+      context: .
+    image: wal-g/ubuntu:24.04
+    container_name: wal-g_ubuntu_24_04
+
   swift:
     image: openstackswift/saio:py3
     container_name: wal-g_swift
@@ -259,7 +266,7 @@ services:
       dockerfile: docker/pg/Dockerfile
       context: .
       args:
-        UBUNTU_TAG: "22.04"
+        UBUNTU_TAG: "24.04"
         PG_MAJOR: "19"
         USE_PGDG: "1"
         INSTALL_WALE: "0"
