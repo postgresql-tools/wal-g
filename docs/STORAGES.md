@@ -207,7 +207,7 @@ To store backups in Swift object storage, WAL-G requires that this variable be s
 * `WALG_SWIFT_PREFIX`
 to specify where to store backups in Swift object storage (e.g. `swift://test-container/walg-folder`)
 
-WAL-G determines Swift object storage credentials using [openStack default credentials](https://www.swiftstack.com/docs/cookbooks/swift_usage/auth.html). You can use any of V1, V2, V3 of the SwiftStack Auth middleware to provide Swift object storage credentials.
+WAL-G determines Swift object storage credentials using [OpenStack default credentials](https://docs.openstack.org/python-openstackclient/latest/configuration/index.html). You can use any of V1, V2, V3 of the Swift Auth middleware to provide Swift object storage credentials.
 
 File system
 -----------
