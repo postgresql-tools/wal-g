@@ -6,7 +6,7 @@ run:
   modules-download-mode: readonly
 output:
   formats:
-    - format: sarif
+    sarif:
       path: golangci-lint.sarif
 linters:
   default: none
