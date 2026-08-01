@@ -33,8 +33,9 @@ jobs:
         with:
           # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
           version: v2.12
-          args: --out-format sarif --output golangci-lint.sarif
+          args: --format sarif
       - name: Upload SARIF report
+        if: failure() || success()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: golangci-lint.sarif
