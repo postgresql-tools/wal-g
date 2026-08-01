@@ -93,10 +93,11 @@ Planned, not yet built (no dates committed):
 
 ## Contributing
 
-We are currently not accepting external code contributions, pull requests, bug
-fixes, or feature submissions at this time. Any pull requests opened will be
-closed without review. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-development workflow.
+This repository is vendor-maintained: we are currently not accepting external
+code contributions, pull requests, bug fixes, or feature submissions. Pull
+requests opened by external contributors may be closed unmerged. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the development setup used by
+maintainers.
 
 ## License
 

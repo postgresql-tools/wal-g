@@ -1,0 +1,39 @@
+# Added in the lateos-ai/wal-g fork. Post-rename, the postgresql-tools/wal-g
+# exclusion below can be removed.
+
+name: Link Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  schedule:
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Link Checker
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Exclusions are pinned to cross-org URLs verified to resolve
+          # (2026-07-31); checking them every run is slow and rate-limit
+          # prone. Repo-relative links are always checked.
+          args: >-
+            --no-progress
+            --exclude 'https://github\.com/wal-g/wal-g/.*'
+            --exclude 'https://github\.com/postgresql-tools/wal-g/.*'
+            --exclude 'https://github\.com/stephane-klein/playground-postgresql-walg/.*'
+            --exclude 'https://github\.com/spf13/viper.*'
+            --exclude 'https://github\.com/go-sql-driver/mysql.*'
+            --exclude 'https://lateos\.ai/.*'
+            --exclude 'https://postgresteam\.slack\.com/.*'
+            --exclude 'https://postgres-slack\.herokuapp\.com.*'
+            --exclude 'https://t\.me/.*'
+            --exclude 'http://169\.254\.169\.254/.*'
+            './**/*.md'

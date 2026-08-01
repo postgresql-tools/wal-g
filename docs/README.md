@@ -375,7 +375,7 @@ WAL-G relies heavily on unit tests. These tests do not require S3 configuration 
 export USE_BROTLI=1
 make unittest
 ```
-For more information on testing, please consult [test](test), [testtools](testtools) and `unittest` section in [Makefile](Makefile).
+For more information on testing, please consult the `unittest` section in [Makefile](../Makefile).
 
 WAL-G will perform a round-trip compression/decompression test that generates a directory for data (e.g., data...), compressed files (e.g., compressed), and extracted files (e.g., extracted). These directories will only get cleaned up if the files in the original data directory match the files in the extracted one.
 
@@ -412,12 +412,10 @@ Authors
 * [Katie Li](https://github.com/katie31)
 * [Daniel Farina](https://github.com/fdr)
 
-See also the list of [contributors](CONTRIBUTORS.md) who participated in this project.
-
 License
 -------
 
-This project is licensed under the Apache License, Version 2.0, but the lzo support is licensed under GPL 3.0+. Please refer to the [LICENSE.md](../LICENSE.md) file for more details.
+This project is licensed under the [Apache License 2.0](../LICENSE) (inherited code) and the [MIT License](../LICENSE-MIT) (Lateos-authored code). See [COPYRIGHT.md](../COPYRIGHT.md) for the path-by-path license map.
 
 Acknowledgments
 ----------------

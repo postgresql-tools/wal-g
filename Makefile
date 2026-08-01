@@ -239,7 +239,7 @@ pg_int_tests_only: pull_external_images
 
 pg_clean:
 	(cd $(MAIN_PG_PATH) && go clean)
-	./cleanup.sh
+	./scripts/cleanup.sh
 
 pg_install: pg_build
 	mv $(MAIN_PG_PATH)/wal-g $(GOBIN)/wal-g
@@ -286,7 +286,7 @@ mysql8_integration_test: go_deps unlink_brotli pull_external_images load_docker_
 
 mysql_clean:
 	(cd $(MAIN_MYSQL_PATH) && go clean)
-	./cleanup.sh
+	./scripts/cleanup.sh
 
 mysql_install: mysql_build
 	mv $(MAIN_MYSQL_PATH)/wal-g $(GOBIN)/wal-g
@@ -349,7 +349,7 @@ redis_integration_test: pull_external_images load_docker_common
 
 redis_clean:
 	(cd $(MAIN_REDIS_PATH) && go clean)
-	./cleanup.sh
+	./scripts/cleanup.sh
 
 redis_install: redis_build
 	mv $(MAIN_REDIS_PATH)/wal-g $(GOBIN)/wal-g
@@ -373,7 +373,7 @@ etcd_install: etcd_build
 
 etcd_clean:
 	(cd $(MAIN_ETCD_PATH) && go clean)
-	./cleanup.sh
+	./scripts/cleanup.sh
 
 # refactor
 etcd_integration_test: pull_external_images load_docker_common
@@ -386,7 +386,7 @@ gp_build: $(CMD_FILES) $(PKG_FILES)
 
 gp_clean:
 	(cd $(MAIN_GP_PATH) && go clean)
-	./cleanup.sh
+	./scripts/cleanup.sh
 
 gp_install: gp_build
 	mv $(MAIN_GP_PATH)/wal-g $(GOBIN)/wal-g
