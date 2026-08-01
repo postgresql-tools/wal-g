@@ -123,7 +123,27 @@ pg18_build_image: pull_external_images
 	docker compose build pg18
 	docker compose build pg18_tests_template
 
-pg_save_image: install_and_build_pg pg10_build_image pg18_build_image
+pg15_build_image: pull_external_images
+	docker compose build $(DOCKER_COMMON)
+	docker compose build pg15
+	docker compose build pg15_tests_template
+
+pg16_build_image: pull_external_images
+	docker compose build $(DOCKER_COMMON)
+	docker compose build pg16
+	docker compose build pg16_tests_template
+
+pg17_build_image: pull_external_images
+	docker compose build $(DOCKER_COMMON)
+	docker compose build pg17
+	docker compose build pg17_tests_template
+
+pg19_build_image: pull_external_images
+	docker compose build $(DOCKER_COMMON)
+	docker compose build pg19
+	docker compose build pg19_tests_template
+
+pg_save_image: install_and_build_pg pg10_build_image pg15_build_image pg16_build_image pg17_build_image pg18_build_image pg19_build_image
 	mkdir -p ${CACHE_FOLDER}
 	sudo rm -rf ${CACHE_FOLDER}/*
 	docker save ${IMAGE_PG10_TESTS} > ${CACHE_FILE_PG10_TESTS}
@@ -178,10 +198,38 @@ pg_integration_test: clean_compose pull_external_images
 			make pg18_build_image;\
 		fi;\
 	fi
+	@if echo "$(TEST)" | grep -Fqe "pg15"; then\
+		if [ -f ${CACHE_FILE_PG15_TESTS} ]; then\
+			docker load -i ${CACHE_FILE_PG15_TESTS} && rm ${CACHE_FILE_PG15_TESTS};\
+		else\
+			make pg15_build_image;\
+		fi;\
+	fi
+	@if echo "$(TEST)" | grep -Fqe "pg16"; then\
+		if [ -f ${CACHE_FILE_PG16_TESTS} ]; then\
+			docker load -i ${CACHE_FILE_PG16_TESTS} && rm ${CACHE_FILE_PG16_TESTS};\
+		else\
+			make pg16_build_image;\
+		fi;\
+	fi
+	@if echo "$(TEST)" | grep -Fqe "pg17"; then\
+		if [ -f ${CACHE_FILE_PG17_TESTS} ]; then\
+			docker load -i ${CACHE_FILE_PG17_TESTS} && rm ${CACHE_FILE_PG17_TESTS};\
+		else\
+			make pg17_build_image;\
+		fi;\
+	fi
+	@if echo "$(TEST)" | grep -Fqe "pg19"; then\
+		if [ -f ${CACHE_FILE_PG19_TESTS} ]; then\
+			docker load -i ${CACHE_FILE_PG19_TESTS} && rm ${CACHE_FILE_PG19_TESTS};\
+		else\
+			make pg19_build_image;\
+		fi;\
+	fi
 	@if echo "$(TEST)" | grep -Fqe "pgbackrest"; then\
 		docker compose build pg10_pgbackrest;\
 	fi
-	@if echo "$(TEST)" | grep -Fq -e "pg10_ssh_" -e "pg10_storage_ssh_"; then\
+	@if echo "$(TEST)" | grep -Fq -e "pg1[0-9]_ssh_" -e "pg1[0-9]_storage_ssh_"; then\
 		docker compose build ssh;\
 	fi
 	@if echo "$(TEST)" | grep -Fqe "swift"; then\
