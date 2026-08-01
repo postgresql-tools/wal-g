@@ -143,6 +143,14 @@ func TestOldestNonPermanentSelector(t *testing.T) {
 
 	_ = folder.PutObject(b2, strings.NewReader(string(bytesMeta2)))
 
+	m1 := path.Join(utility.BaseBackupPath, testLatestBackup.BackupName, utility.MetadataFileName)
+
+	_ = folder.PutObject(m1, strings.NewReader(string(bytesMeta1)))
+
+	m2 := path.Join(utility.BaseBackupPath, testOldestBackup.BackupName, utility.MetadataFileName)
+
+	_ = folder.PutObject(m2, strings.NewReader(string(bytesMeta2)))
+
 	backupSelector := internal.NewOldestNonPermanentSelector(postgres.NewGenericMetaFetcher())
 
 	latestBackup, err := backupSelector.Select(folder)
@@ -171,6 +179,14 @@ func TestOldestNonPermanentSelector_ignorePermanentBackups(t *testing.T) {
 
 	_ = folder.PutObject(b2, strings.NewReader(string(bytesMeta2)))
 
+	m1 := path.Join(utility.BaseBackupPath, testOldestBackup.BackupName, utility.MetadataFileName)
+
+	_ = folder.PutObject(m1, strings.NewReader(string(bytesMeta1)))
+
+	m2 := path.Join(utility.BaseBackupPath, testOldestPermanentBackup.BackupName, utility.MetadataFileName)
+
+	_ = folder.PutObject(m2, strings.NewReader(string(bytesMeta2)))
+
 	backupSelector := internal.NewOldestNonPermanentSelector(postgres.NewGenericMetaFetcher())
 
 	latestBackup, err := backupSelector.Select(folder)
@@ -196,6 +212,10 @@ func TestUserDataBackupSelector(t *testing.T) {
 	bytesMeta1, _ := json.Marshal(&meta1)
 
 	_ = folder.PutObject(b1, strings.NewReader(string(bytesMeta1)))
+
+	m1 := path.Join(utility.BaseBackupPath, testOldestBackup.BackupName, utility.MetadataFileName)
+
+	_ = folder.PutObject(m1, strings.NewReader(string(bytesMeta1)))
 
 	byteUserData, err := json.Marshal(testOldestBackup.UserData)
 
@@ -230,6 +250,14 @@ func TestUserDataBackupSelector_tooManyBackupsFound(t *testing.T) {
 	_ = folder.PutObject(b1, strings.NewReader(string(bytesMeta1)))
 
 	_ = folder.PutObject(b2, strings.NewReader(string(bytesMeta2)))
+
+	m1 := path.Join(utility.BaseBackupPath, testOldestBackup.BackupName, utility.MetadataFileName)
+
+	_ = folder.PutObject(m1, strings.NewReader(string(bytesMeta1)))
+
+	m2 := path.Join(utility.BaseBackupPath, testRepeatedUserDataBackup.BackupName, utility.MetadataFileName)
+
+	_ = folder.PutObject(m2, strings.NewReader(string(bytesMeta2)))
 
 	byteUserData, err := json.Marshal(testOldestBackup.UserData)
 
