@@ -6,6 +6,7 @@ vendor/
 
 # bin
 bin/
+*.exe
 main/fdb/wal-g
 main/sqlserver/wal-g
 main/pg/wal-g
@@ -24,6 +25,7 @@ tests_func/staging
 tests_func/wal-g
 
 tmp/
+internal/dev/
 
 # auto-generated walg_config.h copy for cgo preamble lookup
 internal/crypto/libsodium/gen/
