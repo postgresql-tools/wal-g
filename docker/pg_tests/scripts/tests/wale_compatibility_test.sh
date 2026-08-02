@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e -x
 
+. /tmp/tests/test_functions/prepare_config.sh
+
 initdb ${PGDATA}
 
 echo "archive_mode = on" >> ${PGDATA}/postgresql.conf
@@ -103,7 +105,7 @@ PGSSLMODE=allow \
 PGDATABASE=postgres \
 PGHOST=/var/run/postgresql \
 WALE_FILE_PREFIX=file://localhost/tmp \
-/usr/bin/wal-g wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+/usr/bin/wal-g wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 
 cp /tmp/conf_files/postgresql.conf ${PGDATA}
 cp /tmp/conf_files/pg_hba.conf ${PGDATA}

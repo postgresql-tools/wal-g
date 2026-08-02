@@ -18,6 +18,11 @@ supported by the [PostgreSQL Global Development Group (PGDG)](https://www.postgr
 end-of-life in November 2024. Testing against an EOL version does not validate compatibility
 for production deployments on supported PostgreSQL releases.
 
+**Note:** The WAL-E compatibility tests (`wale_compatibility_test`, `wale_tablespace_compatibility_test`)
+run only against PostgreSQL 10. The legacy `wal-e` tool requires Python 3.7, which is only
+available on the Ubuntu 18.04 base image used for PG 10; the PG 15-18 images (Ubuntu 22.04)
+cannot install it.
+
 **Note:** PostgreSQL 19 is not yet included in CI. It has not been released by the PostgreSQL
 Global Development Group (expected September 2026), so no `postgresql-19` packages are
 available from PGDG yet. CI coverage for PG 19 will be added once it is released.
@@ -33,7 +38,7 @@ Each supported PostgreSQL version runs the following integration tests via GitHu
 - WAL performance test
 - Crypto/encryption
 - Delta backup full scan
-- WAL-E compatibility
+- WAL-E compatibility (PG 10 only, see note above)
 - Configuration validation
 - Ghost table handling
 - Partial restore

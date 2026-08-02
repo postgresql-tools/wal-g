@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e -x
 
+. /tmp/tests/test_functions/prepare_config.sh
+
 initdb ${PGDATA}
 
 echo "archive_mode = on" >> ${PGDATA}/postgresql.conf
@@ -101,7 +103,7 @@ PGDATABASE=postgres \
 PGHOST=/var/run/postgresql \
 WALG_FILE_PREFIX=file://localhost/tmp \
 WALG_LOG_DESTINATION=stderr \
-/usr/bin/wal-g wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+/usr/bin/wal-g wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 
 pg_ctl -D ${PGDATA} -w start
 /tmp/scripts/wait_while_pg_not_ready.sh

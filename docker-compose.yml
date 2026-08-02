@@ -314,11 +314,6 @@ services:
     container_name: wal-g_pg15_delta_backup_fullscan_test
     command: /tmp/tests/delta_backup_fullscan_test.sh
 
-  pg15_wale_compatibility_test:
-    <<: *pg15_test_common
-    container_name: wal-g_pg15_wale_compatibility_test
-    command: /tmp/tests/wale_compatibility_test.sh
-
   pg15_config_test:
     <<: *pg15_test_common
     container_name: wal-g_pg15_config_test
@@ -424,11 +419,6 @@ services:
     container_name: wal-g_pg16_delta_backup_fullscan_test
     command: /tmp/tests/delta_backup_fullscan_test.sh
 
-  pg16_wale_compatibility_test:
-    <<: *pg16_test_common
-    container_name: wal-g_pg16_wale_compatibility_test
-    command: /tmp/tests/wale_compatibility_test.sh
-
   pg16_config_test:
     <<: *pg16_test_common
     container_name: wal-g_pg16_config_test
@@ -533,11 +523,6 @@ services:
     <<: *pg17_test_common
     container_name: wal-g_pg17_delta_backup_fullscan_test
     command: /tmp/tests/delta_backup_fullscan_test.sh
-
-  pg17_wale_compatibility_test:
-    <<: *pg17_test_common
-    container_name: wal-g_pg17_wale_compatibility_test
-    command: /tmp/tests/wale_compatibility_test.sh
 
   pg17_config_test:
     <<: *pg17_test_common

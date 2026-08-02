@@ -249,6 +249,17 @@ orioledb_integration_test: install_and_build_pg clean_compose pull_external_imag
 	docker compose up --pull never --exit-code-from orioledb orioledb
 	make clean_compose
 
+.PHONY: load_docker_common
+load_docker_common:
+	@if [ "x" = "${CACHE_FOLDER}x" ]; then\
+		echo "Rebuild";\
+		docker compose build $(DOCKER_COMMON);\
+	else\
+		docker load -i ${CACHE_FILE_UBUNTU_18_04} && rm ${CACHE_FILE_UBUNTU_18_04};\
+		docker load -i ${CACHE_FILE_UBUNTU_22_04} && rm ${CACHE_FILE_UBUNTU_22_04};\
+		docker load -i ${CACHE_FILE_GOLANG} && rm ${CACHE_FILE_GOLANG};\
+	fi
+
 .PHONY: clean_compose
 clean_compose:
 	services=$$(docker compose ps -a --format '{{.Name}} {{.Service}}' | grep wal-g_ | cut -d' ' -f 2); \

@@ -1,5 +1,8 @@
 #!/bin/sh
 set -e -x
+
+. /tmp/tests/test_functions/prepare_config.sh
+
 CONFIG_FILE="/tmp/configs/transfer_backup_test_config.json"
 FAILOVER_CONFIG_FILE="/tmp/configs/transfer_backup_test_config_failover.json"
 COMMON_CONFIG="/tmp/configs/common_config.json"
@@ -37,7 +40,7 @@ wal-g --config=${TMP_CONFIG} st transfer pg-wals --source=failover --target=defa
 
 wal-g --config=${TMP_CONFIG} backup-fetch ${PGDATA} LATEST
 
-echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 
 wal-g --config=${TMP_CONFIG} st ls -r --target failover
 wal-g --config=${TMP_CONFIG} st ls -r --target default

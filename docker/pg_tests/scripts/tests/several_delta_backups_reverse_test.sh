@@ -37,7 +37,7 @@ sleep 1
 
 wal-g --config=${TMP_CONFIG} backup-fetch ${PGDATA} LATEST --reverse-unpack
 
-echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& /usr/bin/wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& /usr/bin/wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 
 pg_ctl -D ${PGDATA} -w -t 100500 start
 sleep 10
