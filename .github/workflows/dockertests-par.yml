@@ -100,7 +100,6 @@ jobs:
         "make TEST=\"pg15_delete_target_delta_test\" pg_integration_test",
         "make TEST=\"pg15_delete_garbage_test\" pg_integration_test",
         "make TEST=\"pg15_backup_verify_test\" pg_integration_test",
-        # â”€â”€ PostgreSQL 16 (supported by PGDG) â”€â”€
         "make TEST=\"pg16_full_backup_test\" pg_integration_test",
         "make TEST=\"pg16_remote_backup_test\" pg_integration_test",
         "make TEST=\"pg16_delete_retain_full_test\" pg_integration_test",
@@ -123,7 +122,6 @@ jobs:
         "make TEST=\"pg16_delete_target_delta_test\" pg_integration_test",
         "make TEST=\"pg16_delete_garbage_test\" pg_integration_test",
         "make TEST=\"pg16_backup_verify_test\" pg_integration_test",
-        # â”€â”€ PostgreSQL 17 (supported by PGDG) â”€â”€
         "make TEST=\"pg17_full_backup_test\" pg_integration_test",
         "make TEST=\"pg17_remote_backup_test\" pg_integration_test",
         "make TEST=\"pg17_delete_retain_full_test\" pg_integration_test",
