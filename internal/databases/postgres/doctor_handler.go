@@ -17,7 +17,6 @@ import (
 
 	"github.com/lateos-ai/wal-g/internal"
 	conf "github.com/lateos-ai/wal-g/internal/config"
-	"github.com/lateos-ai/wal-g/internal/fsutil"
 	"github.com/lateos-ai/wal-g/pkg/storages/storage"
 	"github.com/lateos-ai/wal-g/utility"
 )
@@ -39,13 +38,13 @@ const (
 
 // Check names, stable enough to be matched on by scripts.
 const (
-	CheckConfig       = "config"
-	CheckStorage      = "storage"
-	CheckEncryption   = "encryption"
-	CheckPostgres     = "postgres"
-	CheckArchiving    = "archiving"
-	CheckBackups      = "backups"
-	CheckRestoreSpace = "restore-space"
+	DoctorCheckConfig       = "config"
+	DoctorCheckStorage      = "storage"
+	DoctorCheckEncryption   = "encryption"
+	DoctorCheckPostgres     = "postgres"
+	DoctorCheckArchiving    = "archiving"
+	DoctorCheckBackups      = "backups"
+	DoctorCheckRestoreSpace = "restore-space"
 )
 
 // canaryPayload is written and read back by the storage and encryption checks.
@@ -91,10 +90,6 @@ type DoctorOptions struct {
 	StaleAfter time.Duration
 }
 
-// DefaultSpaceMargin leaves headroom for WAL replayed during recovery and for
-// the cluster to accept writes once it is up.
-const DefaultSpaceMargin = 1.2
-
 // DefaultStaleAfter is just over a day, so a daily backup schedule that slips by
 // an hour or two does not read as a failure.
 const DefaultStaleAfter = 26 * time.Hour
@@ -103,7 +98,7 @@ const DefaultStaleAfter = 26 * time.Hour
 // process exit code: 0 when nothing failed, 1 otherwise.
 func HandleDoctor(rootFolder storage.Folder, opts DoctorOptions, output io.Writer) int {
 	if opts.SpaceMargin <= 0 {
-		opts.SpaceMargin = DefaultSpaceMargin
+		opts.SpaceMargin = DefaultRestoreSpaceMargin
 	}
 	if opts.StaleAfter <= 0 {
 		opts.StaleAfter = DefaultStaleAfter
@@ -162,7 +157,7 @@ func timed(start time.Time, check DoctorCheck) DoctorCheck {
 // otherwise guesswork across 180-odd settings.
 func checkConfig() DoctorCheck {
 	start := time.Now()
-	check := DoctorCheck{Name: CheckConfig}
+	check := DoctorCheck{Name: DoctorCheckConfig}
 
 	var missing []string
 	var resolved []string
@@ -212,7 +207,7 @@ func settingSource(setting string) string {
 // only restores: wal-push and backup-push both fail late without it.
 func checkStorage(rootFolder storage.Folder) DoctorCheck {
 	start := time.Now()
-	check := DoctorCheck{Name: CheckStorage}
+	check := DoctorCheck{Name: DoctorCheckStorage}
 
 	if _, _, err := rootFolder.ListFolder(); err != nil {
 		check.Status = DoctorFail
@@ -286,7 +281,7 @@ func readStorageObject(folder storage.Folder, name string) (string, error) {
 // they are needed, and nothing else in the normal backup path notices.
 func checkEncryption() DoctorCheck {
 	start := time.Now()
-	check := DoctorCheck{Name: CheckEncryption}
+	check := DoctorCheck{Name: DoctorCheckEncryption}
 
 	crypter, err := internal.ConfigureCrypterForSpecificConfig(viper.GetViper())
 	if err != nil {
@@ -369,18 +364,18 @@ func runPostgresChecks(opts DoctorOptions) []DoctorCheck {
 
 	if opts.SkipPG {
 		skipped := DoctorCheck{
-			Name:    CheckPostgres,
+			Name:    DoctorCheckPostgres,
 			Status:  DoctorSkip,
 			Summary: "skipped (--skip-pg)",
 			Elapsed: "0s",
 		}
 		archiving := skipped
-		archiving.Name = CheckArchiving
+		archiving.Name = DoctorCheckArchiving
 		return []DoctorCheck{skipped, archiving}
 	}
 
-	pgCheck := DoctorCheck{Name: CheckPostgres}
-	archivingCheck := DoctorCheck{Name: CheckArchiving}
+	pgCheck := DoctorCheck{Name: DoctorCheckPostgres}
+	archivingCheck := DoctorCheck{Name: DoctorCheckArchiving}
 
 	ctx := context.Background()
 
@@ -522,7 +517,7 @@ func formatPgVersion(version int) string {
 // returns the newest backup so the restore-space check can size itself.
 func checkBackups(rootFolder storage.Folder, opts DoctorOptions) (*internal.BackupTime, DoctorCheck) {
 	start := time.Now()
-	check := DoctorCheck{Name: CheckBackups}
+	check := DoctorCheck{Name: DoctorCheckBackups}
 
 	baseBackupFolder := rootFolder.GetSubFolder(utility.BaseBackupPath)
 
@@ -566,7 +561,7 @@ func checkRestoreSpace(
 	opts DoctorOptions,
 ) DoctorCheck {
 	start := time.Now()
-	check := DoctorCheck{Name: CheckRestoreSpace}
+	check := DoctorCheck{Name: DoctorCheckRestoreSpace}
 
 	if latest == nil {
 		check.Status = DoctorSkip
@@ -600,52 +595,41 @@ func checkRestoreSpace(
 		return timed(start, check)
 	}
 
-	sentinel, err := backup.GetSentinel()
+	// Same sizing the fetch path runs before extracting, so the two cannot drift.
+	preflight, err := CheckRestoreSpace(backup, dataDir, opts.SpaceMargin)
 	if err != nil {
 		check.Status = DoctorWarn
-		check.Summary = "could not read the latest backup's sentinel to size a restore"
+		check.Summary = "could not size a restore of the latest backup"
 		check.Detail = err.Error()
 		return timed(start, check)
 	}
 
-	required := sentinel.UncompressedSize
-	if required <= 0 {
-		check.Status = DoctorSkip
-		check.Summary = "skipped (backup does not record an uncompressed size)"
-		check.Detail = "backups taken before size recording cannot be sized without downloading them"
-		return timed(start, check)
-	}
+	check.Detail = preflight.Describe()
 
-	space, err := fsutil.GetDiskSpace(dataDir)
-	if err != nil {
-		check.Status = DoctorWarn
-		check.Summary = "could not determine free disk space"
-		check.Detail = err.Error()
-		return timed(start, check)
-	}
-
-	needed := int64(float64(required) * opts.SpaceMargin)
-
-	check.Detail = fmt.Sprintf("%s: %s free, restore of %s needs ~%s (%.0f%% margin)",
-		dataDir,
-		formatBytes(int64(space.FreeBytes)),
-		latest.BackupName,
-		formatBytes(needed),
-		(opts.SpaceMargin-1)*100)
-
-	if int64(space.FreeBytes) < needed {
+	switch preflight.Verdict {
+	case SpaceInsufficient:
 		check.Status = DoctorFail
-		check.Summary = fmt.Sprintf("not enough free space to restore (%s free, ~%s needed)",
-			formatBytes(int64(space.FreeBytes)),
-			formatBytes(needed))
+		check.Summary = preflight.Summary()
 		check.Remedy = "Free space on the data directory's filesystem, or restore to a larger volume " +
 			"with `backup-fetch <target-dir>`."
-		return timed(start, check)
+
+	case SpaceIndeterminate:
+		check.Status = DoctorWarn
+		check.Summary = "restore size cannot be checked precisely"
+		check.Remedy = "Verify each tablespace filesystem has room for its share of " +
+			formatBytes(preflight.NeededBytes) + "; the backup records no per-tablespace sizes."
+
+	case SpaceUnknown:
+		check.Status = DoctorSkip
+		check.Summary = "skipped (" + preflight.Reason + ")"
+		check.Detail = ""
+
+	default:
+		check.Status = DoctorPass
+		check.Summary = fmt.Sprintf("%s free, enough to restore the latest backup",
+			formatBytes(preflight.FreeBytes))
 	}
 
-	check.Status = DoctorPass
-	check.Summary = fmt.Sprintf("%s free, enough to restore the latest backup",
-		formatBytes(int64(space.FreeBytes)))
 	return timed(start, check)
 }
 

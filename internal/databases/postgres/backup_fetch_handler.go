@@ -132,9 +132,12 @@ func deltaFetchRecursionOld(backup Backup, rootFolder storage.Folder, dbDataDire
 	return backup.unwrapToEmptyDirectory(dbDataDirectory, filesToUnwrap, false, extractProv)
 }
 
-func GetFetcherOld(dbDataDirectory, fileMask, restoreSpecPath string, extractProv ExtractProvider) internal.Fetcher {
+func GetFetcherOld(dbDataDirectory, fileMask, restoreSpecPath string, extractProv ExtractProvider,
+	spaceGuard SpaceGuardOptions) internal.Fetcher {
 	return func(rootFolder storage.Folder, backup internal.Backup) {
 		pgBackup := ToPgBackup(backup)
+
+		GuardRestoreSpace(pgBackup, utility.ResolveSymlink(dbDataDirectory), spaceGuard)
 
 		filesToUnwrap, err := pgBackup.GetFilesToUnwrap(fileMask)
 

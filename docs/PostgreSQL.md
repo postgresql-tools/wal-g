@@ -135,6 +135,48 @@ WAL-G can fetch the backup that has the specific UserData (stored in backup meta
 wal-g backup-fetch /path --target-user-data "{ \"x\": [3], \"y\": 4 }"
 ```
 
+#### Free-space preflight
+
+Before extracting anything, `backup-fetch` compares the backup's recorded
+uncompressed size against the free space on the filesystems it would write to. A
+restore that cannot fit is refused in the time it takes to read the sentinel,
+rather than failing hours later with a half-written data directory.
+
+```bash
+# Require 50% headroom instead of the default 20%
+wal-g backup-fetch /path LATEST --space-margin 1.5
+
+# Proceed even though the preflight says it will not fit
+wal-g backup-fetch /path LATEST --force
+
+# Skip the check entirely
+wal-g backup-fetch /path LATEST --skip-space-check
+```
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--space-margin` | `1.2` | Multiple of the uncompressed size that must be free. The headroom covers WAL replayed during recovery and the cluster accepting writes once it is up |
+| `--force` | `false` | Downgrade a refusal to a warning |
+| `--skip-space-check` | `false` | Do not check at all |
+
+The check reports one of four verdicts, and only ever refuses on the second:
+
+- **sufficient** — the restore fits, with margin.
+- **insufficient** — it demonstrably does not fit. The restore is refused unless `--force`.
+- **indeterminate** — the backup uses tablespaces spread across several
+  filesystems. A backup sentinel records only a *total* uncompressed size, with no
+  per-tablespace breakdown, so how that total divides between those filesystems is
+  not knowable before extracting. The restore proceeds with a warning. Only a total
+  that cannot fit even when every filesystem is pooled is treated as a refusal.
+- **unknown** — the backup predates size recording, so there is nothing to size
+  against. The restore proceeds.
+
+Tablespaces that share a filesystem are collapsed into a single pool, so they are
+not each credited with the same free space.
+
+The same sizing logic backs `wal-g doctor`'s `restore-space` check, so a
+preflight refusal and a doctor failure always agree.
+
 #### Reverse delta unpack
 
 Beta feature: WAL-G can unpack delta backups in reverse order to improve fetch efficiency.

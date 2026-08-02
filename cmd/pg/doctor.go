@@ -91,7 +91,7 @@ func init() {
 	doctorCmd.Flags().StringVar(&doctorDataDir, doctorDataDirFlag, "", doctorDataDirDescription)
 	doctorCmd.Flags().StringVar(&doctorFormat, doctorFormatFlag, "text", doctorFormatDescription)
 	doctorCmd.Flags().Float64Var(&doctorSpaceMargin, doctorSpaceMarginFlag,
-		postgres.DefaultSpaceMargin, doctorSpaceMarginDescription)
+		postgres.DefaultRestoreSpaceMargin, doctorSpaceMarginDescription)
 	doctorCmd.Flags().DurationVar(&doctorStaleAfter, doctorStaleAfterFlag,
 		postgres.DefaultStaleAfter, doctorStaleAfterDescription)
 }

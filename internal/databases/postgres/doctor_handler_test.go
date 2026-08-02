@@ -44,7 +44,7 @@ func TestDoctor_StorageRoundTripPasses(t *testing.T) {
 
 	result, _ := runDoctorJSON(t, root, DoctorOptions{SkipPG: true})
 
-	check := findCheck(t, result, CheckStorage)
+	check := findCheck(t, result, DoctorCheckStorage)
 	if check.Status != DoctorPass {
 		t.Errorf("expected storage check to pass, got %s: %s (%s)", check.Status, check.Summary, check.Detail)
 	}
@@ -73,7 +73,7 @@ func TestDoctor_NoBackupsFails(t *testing.T) {
 
 	result, code := runDoctorJSON(t, root, DoctorOptions{SkipPG: true})
 
-	check := findCheck(t, result, CheckBackups)
+	check := findCheck(t, result, DoctorCheckBackups)
 	if check.Status != DoctorFail {
 		t.Errorf("expected backups check to fail with an empty storage, got %s", check.Status)
 	}
@@ -94,7 +94,7 @@ func TestDoctor_FreshBackupPasses(t *testing.T) {
 
 	result, _ := runDoctorJSON(t, root, DoctorOptions{SkipPG: true})
 
-	check := findCheck(t, result, CheckBackups)
+	check := findCheck(t, result, DoctorCheckBackups)
 	if check.Status != DoctorPass {
 		t.Errorf("expected backups check to pass for a fresh backup, got %s: %s", check.Status, check.Summary)
 	}
@@ -116,7 +116,7 @@ func TestDoctor_StaleBackupWarnsButDoesNotFail(t *testing.T) {
 		StaleAfter: 26 * time.Hour,
 	})
 
-	check := findCheck(t, result, CheckBackups)
+	check := findCheck(t, result, DoctorCheckBackups)
 	if check.Status != DoctorWarn {
 		t.Errorf("expected a stale backup to warn, got %s: %s", check.Status, check.Summary)
 	}
@@ -130,7 +130,7 @@ func TestDoctor_SkipPGSkipsPostgresChecks(t *testing.T) {
 
 	result, _ := runDoctorJSON(t, root, DoctorOptions{SkipPG: true})
 
-	for _, name := range []string{CheckPostgres, CheckArchiving} {
+	for _, name := range []string{DoctorCheckPostgres, DoctorCheckArchiving} {
 		if check := findCheck(t, result, name); check.Status != DoctorSkip {
 			t.Errorf("expected %s check to be skipped, got %s", name, check.Status)
 		}
@@ -146,7 +146,7 @@ func TestDoctor_RestoreSpaceSkippedWithoutDataDir(t *testing.T) {
 		DataDir: "/nonexistent/path/for/doctor/test",
 	})
 
-	check := findCheck(t, result, CheckRestoreSpace)
+	check := findCheck(t, result, DoctorCheckRestoreSpace)
 	if check.Status != DoctorSkip {
 		t.Errorf("expected restore-space to skip when the data directory is absent, got %s", check.Status)
 	}
@@ -164,7 +164,7 @@ func TestDoctor_RestoreSpaceFailsWhenBackupExceedsDisk(t *testing.T) {
 		DataDir: t.TempDir(),
 	})
 
-	check := findCheck(t, result, CheckRestoreSpace)
+	check := findCheck(t, result, DoctorCheckRestoreSpace)
 	if check.Status != DoctorFail {
 		t.Fatalf("expected restore-space to fail for an unrestorably large backup, got %s: %s",
 			check.Status, check.Summary)
@@ -186,7 +186,7 @@ func TestDoctor_RestoreSpacePassesForSmallBackup(t *testing.T) {
 		DataDir: t.TempDir(),
 	})
 
-	check := findCheck(t, result, CheckRestoreSpace)
+	check := findCheck(t, result, DoctorCheckRestoreSpace)
 	if check.Status != DoctorPass {
 		t.Errorf("expected restore-space to pass for a 1 KiB backup, got %s: %s (%s)",
 			check.Status, check.Summary, check.Detail)
@@ -201,8 +201,8 @@ func TestDoctor_TextOutputReportsEveryCheck(t *testing.T) {
 	HandleDoctor(root, DoctorOptions{SkipPG: true, Format: "text"}, buf)
 
 	for _, name := range []string{
-		CheckConfig, CheckStorage, CheckEncryption,
-		CheckPostgres, CheckArchiving, CheckBackups, CheckRestoreSpace,
+		DoctorCheckConfig, DoctorCheckStorage, DoctorCheckEncryption,
+		DoctorCheckPostgres, DoctorCheckArchiving, DoctorCheckBackups, DoctorCheckRestoreSpace,
 	} {
 		if !bytes.Contains(buf.Bytes(), []byte(name)) {
 			t.Errorf("text output does not mention the %q check:\n%s", name, buf.String())
