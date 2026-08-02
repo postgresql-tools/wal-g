@@ -6,6 +6,8 @@
 # 3. WAL-G can restore using --restore-spec to different tablespace locations
 set -e -x
 
+. /tmp/tests/test_functions/prepare_config.sh
+
 initdb ${PGDATA}
 
 echo "archive_mode = on" >> ${PGDATA}/postgresql.conf
@@ -162,7 +164,7 @@ PGDATABASE=postgres \
 PGHOST=/var/run/postgresql \
 WALG_FILE_PREFIX=file://localhost/tmp \
 WALG_LOG_DESTINATION=stderr \
-/usr/bin/wal-g wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+/usr/bin/wal-g wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 
 cp -t ${PGDATA} /tmp/conf_files/postgresql.conf /tmp/conf_files/pg_hba.conf /tmp/conf_files/pg_ident.conf
 
@@ -173,6 +175,7 @@ pg_dumpall -f /tmp/dump2
 # Verify data is identical
 sed -i "s|LOCATION '/tmp/spaces/space'|LOCATION '/tmp/new_spaces/new_space'|" /tmp/dump1
 sed -i "s|LOCATION '/tmp/spaces/space2'|LOCATION '/tmp/new_spaces/new_space2'|" /tmp/dump1
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 # Verify tablespace files are in the NEW locations

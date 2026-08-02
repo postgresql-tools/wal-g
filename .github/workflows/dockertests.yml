@@ -15,12 +15,18 @@ env:
   CACHE_FILE_UBUNTU_22_04: ~/docker-images-${{ github.sha }}/wal-g_ubuntu-22.04.tar
   CACHE_FILE_GOLANG: ~/docker-images-${{ github.sha }}/wal-g_golang.tar
   CACHE_FILE_PG10_TESTS: ~/docker-images-${{ github.sha }}/pg10_tests.tar
+  CACHE_FILE_PG15_TESTS: ~/docker-images-${{ github.sha }}/pg15_tests.tar
+  CACHE_FILE_PG16_TESTS: ~/docker-images-${{ github.sha }}/pg16_tests.tar
+  CACHE_FILE_PG17_TESTS: ~/docker-images-${{ github.sha }}/pg17_tests.tar
   CACHE_FILE_PG18_TESTS: ~/docker-images-${{ github.sha }}/pg18_tests.tar
   CACHE_FILE_S3: ~/docker-images-${{ github.sha }}/s3.tar
   CACHE_FILE_S3_THROTTLING: ~/docker-images-${{ github.sha }}/s3-throttling.tar
   CACHE_FILE_SWIFT: ~/docker-images-${{ github.sha }}/swift.tar
   GOEXPERIMENT: jsonv2
   IMAGE_PG10_TESTS: wal-g/pg10_tests
+  IMAGE_PG15_TESTS: wal-g/pg15_tests
+  IMAGE_PG16_TESTS: wal-g/pg16_tests
+  IMAGE_PG17_TESTS: wal-g/pg17_tests
   IMAGE_PG18_TESTS: wal-g/pg18_tests
   IMAGE_GOLANG: wal-g/golang
   IMAGES_CACHE_KEY: docker-images-${{ github.sha }}
@@ -39,6 +45,9 @@ jobs:
         with:
           path: |
             ${{ env.CACHE_FILE_PG10_TESTS }}
+            ${{ env.CACHE_FILE_PG15_TESTS }}
+            ${{ env.CACHE_FILE_PG16_TESTS }}
+            ${{ env.CACHE_FILE_PG17_TESTS }}
             ${{ env.CACHE_FILE_PG18_TESTS }}
             ${{ env.CACHE_FILE_UBUNTU_18_04 }}
             ${{ env.CACHE_FILE_UBUNTU_22_04 }}
@@ -116,6 +125,9 @@ jobs:
         with:
           path: |
             ${{ env.CACHE_FILE_PG10_TESTS }}
+            ${{ env.CACHE_FILE_PG15_TESTS }}
+            ${{ env.CACHE_FILE_PG16_TESTS }}
+            ${{ env.CACHE_FILE_PG17_TESTS }}
             ${{ env.CACHE_FILE_PG18_TESTS }}
             ${{ env.CACHE_FILE_UBUNTU_18_04 }}
             ${{ env.CACHE_FILE_UBUNTU_22_04 }}

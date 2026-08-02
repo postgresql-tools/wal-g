@@ -1,7 +1,0 @@
-# Build artifacts
-wal-g
-wal-g-*
-
-# Environment files
-.env
-.env.*

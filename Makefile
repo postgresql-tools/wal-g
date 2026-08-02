@@ -3,13 +3,6 @@
 export GOEXPERIMENT=jsonv2
 
 MAIN_PG_PATH := main/pg
-MAIN_MYSQL_PATH := main/mysql
-MAIN_SQLSERVER_PATH := main/sqlserver
-MAIN_REDIS_PATH := main/redis
-MAIN_MONGO_PATH := main/mongo
-MAIN_FDB_PATH := main/fdb
-MAIN_GP_PATH := main/gp
-MAIN_ETCD_PATH := main/etcd
 DOCKER_COMMON := golang ubuntu ubuntu_22_04 s3
 CMD_FILES = $(wildcard cmd/**/*.go)
 PKG_FILES = $(wildcard internal/*.go internal/**/*.go internal/**/**/*.go internal/**/**/**/*.go)
@@ -18,19 +11,11 @@ PKG := github.com/lateos-ai/wal-g
 BUILD_DATE := $(shell date -u +%Y.%m.%d_%H:%M:%S 2>/dev/null || powershell -Command "Get-Date -Format 'yyyy.MM.dd_HH:mm:ss'" 2>/dev/null || echo unknown)
 COVERAGE_FILE := coverage.out
 TEST := "pg10_tests"
-MYSQL_TEST := "mysql_base_tests"
-MYSQL8_TEST := "mysql8_tests"
-MONGO_VERSION ?= "8.0.3"
-MONGO_PACKAGE ?= "mongodb-org"
-MONGO_REPO ?= "repo.mongodb.org"
-MONGO_TEST_TYPE ?= "all"
 GOLANGCI_LINT_VERSION ?= "v2.0"
-REDIS_VERSION ?= "6.2.4"
 S3_IMAGE := minio/minio:RELEASE.2021-06-07T21-40-51Z
 S3_THROTTLING_IMAGE := minio/minio:RELEASE.2024-01-18T22-51-28Z
 SWIFT_IMAGE := openstackswift/saio:py3
 PULL_RETRIES := 3
-IMAGE_TYPE ?= "rdb"
 MOCKS_DESTINATION := ./testtools/mocks
 FILE_TO_MOCKS := ./internal/uploader.go # list interface paths here
 WALG_VERSION ?= `git tag -l --points-at HEAD | tail -1`
@@ -80,7 +65,7 @@ endif
 BUILD_GCFLAGS := 
 
 ifdef ENABLE_DEBUG
-	BUILD_GCFLAGS:=$(BUILD_GCFLAGS) all=-N -l
+	BUILD_GCFLAGS:=$(BUILD_GCFLAGS) all=-n -l
 endif
 
 # Retry a command up to N times with exponential backoff.
@@ -116,7 +101,7 @@ pull_external_images:
 
 .PHONY: unittest fmt lint clean
 
-test: deps unittest pg_build mysql_build redis_build mongo_build gp_build cloudberry_build unlink_brotli pg_integration_test mysql_integration_test redis_integration_test fdb_integration_test gp_integration_test cloudberry_integration_test etcd_integration_test
+test: deps pg_build unlink_brotli pg_integration_test
 
 pg_test: deps pg_build unlink_brotli pg_integration_test
 
@@ -138,10 +123,28 @@ pg18_build_image: pull_external_images
 	docker compose build pg18
 	docker compose build pg18_tests_template
 
-pg_save_image: install_and_build_pg pg10_build_image pg18_build_image
+pg15_build_image: pull_external_images
+	docker compose build $(DOCKER_COMMON)
+	docker compose build pg15
+	docker compose build pg15_tests_template
+
+pg16_build_image: pull_external_images
+	docker compose build $(DOCKER_COMMON)
+	docker compose build pg16
+	docker compose build pg16_tests_template
+
+pg17_build_image: pull_external_images
+	docker compose build $(DOCKER_COMMON)
+	docker compose build pg17
+	docker compose build pg17_tests_template
+
+pg_save_image: install_and_build_pg pg10_build_image pg15_build_image pg16_build_image pg17_build_image pg18_build_image
 	mkdir -p ${CACHE_FOLDER}
 	sudo rm -rf ${CACHE_FOLDER}/*
 	docker save ${IMAGE_PG10_TESTS} > ${CACHE_FILE_PG10_TESTS}
+	docker save ${IMAGE_PG15_TESTS} > ${CACHE_FILE_PG15_TESTS}
+	docker save ${IMAGE_PG16_TESTS} > ${CACHE_FILE_PG16_TESTS}
+	docker save ${IMAGE_PG17_TESTS} > ${CACHE_FILE_PG17_TESTS}
 	docker save ${IMAGE_PG18_TESTS} > ${CACHE_FILE_PG18_TESTS}
 	docker save wal-g/ubuntu:18.04 > ${CACHE_FILE_UBUNTU_18_04}
 	docker save wal-g/ubuntu:22.04 > ${CACHE_FILE_UBUNTU_22_04}
@@ -193,10 +196,31 @@ pg_integration_test: clean_compose pull_external_images
 			make pg18_build_image;\
 		fi;\
 	fi
+	@if echo "$(TEST)" | grep -Fqe "pg15"; then\
+		if [ -f ${CACHE_FILE_PG15_TESTS} ]; then\
+			docker load -i ${CACHE_FILE_PG15_TESTS} && rm ${CACHE_FILE_PG15_TESTS};\
+		else\
+			make pg15_build_image;\
+		fi;\
+	fi
+	@if echo "$(TEST)" | grep -Fqe "pg16"; then\
+		if [ -f ${CACHE_FILE_PG16_TESTS} ]; then\
+			docker load -i ${CACHE_FILE_PG16_TESTS} && rm ${CACHE_FILE_PG16_TESTS};\
+		else\
+			make pg16_build_image;\
+		fi;\
+	fi
+	@if echo "$(TEST)" | grep -Fqe "pg17"; then\
+		if [ -f ${CACHE_FILE_PG17_TESTS} ]; then\
+			docker load -i ${CACHE_FILE_PG17_TESTS} && rm ${CACHE_FILE_PG17_TESTS};\
+		else\
+			make pg17_build_image;\
+		fi;\
+	fi
 	@if echo "$(TEST)" | grep -Fqe "pgbackrest"; then\
 		docker compose build pg10_pgbackrest;\
 	fi
-	@if echo "$(TEST)" | grep -Fq -e "pg10_ssh_" -e "pg10_storage_ssh_"; then\
+	@if echo "$(TEST)" | grep -Fq -e "pg1[0-9]_ssh_" -e "pg1[0-9]_storage_ssh_"; then\
 		docker compose build ssh;\
 	fi
 	@if echo "$(TEST)" | grep -Fqe "swift"; then\
@@ -225,6 +249,17 @@ orioledb_integration_test: install_and_build_pg clean_compose pull_external_imag
 	docker compose up --pull never --exit-code-from orioledb orioledb
 	make clean_compose
 
+.PHONY: load_docker_common
+load_docker_common:
+	@if [ "x" = "${CACHE_FOLDER}x" ]; then\
+		echo "Rebuild";\
+		docker compose build $(DOCKER_COMMON);\
+	else\
+		docker load -i ${CACHE_FILE_UBUNTU_18_04} && rm ${CACHE_FILE_UBUNTU_18_04};\
+		docker load -i ${CACHE_FILE_UBUNTU_22_04} && rm ${CACHE_FILE_UBUNTU_22_04};\
+		docker load -i ${CACHE_FILE_GOLANG} && rm ${CACHE_FILE_GOLANG};\
+	fi
+
 .PHONY: clean_compose
 clean_compose:
 	services=$$(docker compose ps -a --format '{{.Name}} {{.Service}}' | grep wal-g_ | cut -d' ' -f 2); \
@@ -243,174 +278,6 @@ pg_clean:
 
 pg_install: pg_build
 	mv $(MAIN_PG_PATH)/wal-g $(GOBIN)/wal-g
-
-mysql_base: deps mysql_build unlink_brotli
-mysql_test: deps mysql_build unlink_brotli mysql_integration_test
-
-mysql_build: $(CMD_FILES) $(PKG_FILES)
-	cd $(MAIN_MYSQL_PATH) && $(SODIUM_CGO) go build -mod vendor -tags "$(BUILD_TAGS)" -o wal-g -gcflags "$(BUILD_GCFLAGS)" -ldflags "-s -w -X $(PKG)/cmd/mysql.buildDate=$(BUILD_DATE) -X $(PKG)/cmd/mysql.gitRevision=$(GIT_REVISION) -X $(PKG)/cmd/mysql.walgVersion=$(WALG_VERSION)"
-
-sqlserver_build: $(CMD_FILES) $(PKG_FILES)
-	cd $(MAIN_SQLSERVER_PATH) && $(SODIUM_CGO) go build -mod vendor -tags "$(BUILD_TAGS)" -o wal-g -gcflags "$(BUILD_GCFLAGS)" -ldflags "-s -w -X $(PKG)/cmd/sqlserver.buildDate=$(BUILD_DATE) -X $(PKG)/cmd/sqlserver.gitRevision=$(GIT_REVISION) -X $(PKG)/cmd/sqlserver.walgVersion=$(WALG_VERSION)"
-
-load_docker_common:
-	@if [ "x" = "${CACHE_FOLDER}x" ]; then\
-		echo "Rebuild";\
-		docker compose build $(DOCKER_COMMON);\
-		for i in $$(seq 1 $(PULL_RETRIES)); do \
-			if docker compose pull s3 s3-another s3-for-throttling 2>/dev/null; then \
-				echo "Successfully pulled external images"; \
-				break; \
-			elif [ $$i -eq $(PULL_RETRIES) ]; then \
-				echo "Warning: failed to pull external images after $(PULL_RETRIES) attempts, continuing"; \
-			else \
-				sleep $$((1 << ($$i - 1))); \
-			fi; \
-		done;\
-	else\
-		docker load -i ${CACHE_FILE_UBUNTU_18_04} && rm ${CACHE_FILE_UBUNTU_18_04};\
-		docker load -i ${CACHE_FILE_UBUNTU_22_04} && rm ${CACHE_FILE_UBUNTU_22_04};\
-		docker load -i ${CACHE_FILE_GOLANG} && rm ${CACHE_FILE_GOLANG};\
-		if [ -f ${CACHE_FILE_S3} ]; then docker load -i ${CACHE_FILE_S3} && rm ${CACHE_FILE_S3}; fi;\
-		if [ -f ${CACHE_FILE_S3_THROTTLING} ]; then docker load -i ${CACHE_FILE_S3_THROTTLING} && rm ${CACHE_FILE_S3_THROTTLING}; fi;\
-	fi
-
-mysql_integration_test: deps mysql_build unlink_brotli pull_external_images load_docker_common
-	./link_brotli.sh
-	docker compose build mysql && docker compose build $(MYSQL_TEST)
-	docker compose up --pull never --force-recreate --exit-code-from $(MYSQL_TEST) $(MYSQL_TEST)
-
-mysql8_integration_test: go_deps unlink_brotli pull_external_images load_docker_common
-	docker compose build mysql8 && docker compose build $(MYSQL8_TEST)
-	docker compose up --pull never --force-recreate --exit-code-from $(MYSQL8_TEST) $(MYSQL8_TEST)
-
-mysql_clean:
-	(cd $(MAIN_MYSQL_PATH) && go clean)
-	./scripts/cleanup.sh
-
-mysql_install: mysql_build
-	mv $(MAIN_MYSQL_PATH)/wal-g $(GOBIN)/wal-g
-
-mariadb_test: deps mysql_build unlink_brotli mariadb_integration_test
-
-mariadb_integration_test: unlink_brotli pull_external_images load_docker_common
-	./link_brotli.sh
-	docker compose build mariadb && docker compose build mariadb_tests
-	docker compose up --pull never --force-recreate --exit-code-from mariadb_tests mariadb_tests
-
-mongo_test: deps mongo_build unlink_brotli
-
-mongo_build: $(CMD_FILES) $(PKG_FILES)
-	cd $(MAIN_MONGO_PATH) && $(SODIUM_CGO) go build -mod vendor -tags "$(BUILD_TAGS)" -o wal-g -gcflags "$(BUILD_GCFLAGS)" -ldflags "-s -w -X $(PKG)/cmd/mongo.buildDate=$(BUILD_DATE) -X $(PKG)/cmd/mongo.gitRevision=$(GIT_REVISION) -X $(PKG)/cmd/mongo.walgVersion=$(WALG_VERSION)"
-
-mongo_install: mongo_build
-	mv $(MAIN_MONGO_PATH)/wal-g $(GOBIN)/wal-g
-
-mongo_features:
-	set -e
-	make go_deps
-	cd tests_func/ && MONGO_VERSION=$(MONGO_VERSION) MONGO_PACKAGE=$(MONGO_PACKAGE) MONGO_REPO=$(MONGO_REPO) MONGO_TEST_TYPE=$(MONGO_TEST_TYPE) go test -v -count=1 -timeout 45m  --tf.test=true --tf.debug=true --tf.clean=false --tf.stop=false --tf.database=mongodb
-
-mongo_binary_features:
-	MONGO_TEST_TYPE="binary" $(MAKE) mongo_features
-
-mongo_logical_features:
-	MONGO_TEST_TYPE="logical" $(MAKE) mongo_features
-
-mongo_partial_features:
-	MONGO_TEST_TYPE="partial" $(MAKE) mongo_features
-
-mongo_catch_up_features:
-	MONGO_TEST_TYPE="catch_up" $(MAKE) mongo_features
-
-clean_mongo_features:
-	set -e
-	cd tests_func/ && MONGO_VERSION=$(MONGO_VERSION) MONGO_PACKAGE=$(MONGO_PACKAGE) MONGO_REPO=$(MONGO_REPO) go test -v -count=1  -timeout 5m --tf.test=false --tf.debug=false --tf.clean=true --tf.stop=true --tf.database=mongodb
-
-fdb_build: $(CMD_FILES) $(PKG_FILES)
-	cd $(MAIN_FDB_PATH) && $(SODIUM_CGO) go build -mod vendor -tags "$(BUILD_TAGS)" -o wal-g -gcflags "$(BUILD_GCFLAGS)" -ldflags "-s -w"
-
-fdb_install: fdb_build
-	mv $(MAIN_FDB_PATH)/wal-g $(GOBIN)/wal-g
-
-fdb_integration_test: pull_external_images load_docker_common
-	docker compose down -v
-	docker compose build fdb_tests
-	docker compose up --pull never --force-recreate --renew-anon-volumes --exit-code-from fdb_tests fdb_tests
-
-redis_test: deps redis_build unlink_brotli redis_integration_test
-
-redis_build: $(CMD_FILES) $(PKG_FILES)
-	cd $(MAIN_REDIS_PATH) && $(SODIUM_CGO) go build -mod vendor -tags "$(BUILD_TAGS)" -o wal-g -gcflags "$(BUILD_GCFLAGS)" -ldflags "-s -w -X $(PKG)/cmd/redis.buildDate=$(BUILD_DATE) -X $(PKG)/cmd/redis.gitRevision=$(GIT_REVISION) -X $(PKG)/cmd/redis.walgVersion=$(WALG_VERSION)"
-
-redis_integration_test: pull_external_images load_docker_common
-	docker compose build redis && docker compose build redis_tests
-	docker compose up --pull never --exit-code-from redis_tests redis_tests
-
-redis_clean:
-	(cd $(MAIN_REDIS_PATH) && go clean)
-	./scripts/cleanup.sh
-
-redis_install: redis_build
-	mv $(MAIN_REDIS_PATH)/wal-g $(GOBIN)/wal-g
-
-redis_features:
-	set -e
-	make go_deps
-	cd tests_func/ && REDIS_VERSION=$(REDIS_VERSION) IMAGE_TYPE=$(IMAGE_TYPE) go test -v -count=1 -timeout 20m  --tf.test=true --tf.debug=false --tf.clean=false --tf.stop=false --tf.database=redis
-
-clean_redis_features:
-	set -e
-	cd tests_func/ && REDIS_VERSION=$(REDIS_VERSION) go test -v -count=1  -timeout 5m --tf.test=false --tf.debug=false --tf.clean=true --tf.stop=true --tf.database=redis
-
-etcd_test: deps etcd_build unlink_brotli etcd_integration_test
-
-etcd_build: $(CMD_FILES) $(PKG_FILES)
-	cd $(MAIN_ETCD_PATH) && $(SODIUM_CGO) go build -x -mod vendor -tags "$(BUILD_TAGS)" -o wal-g -gcflags "$(BUILD_GCFLAGS)" -ldflags "-s -w -X $(PKG)/cmd/etcd.buildDate=$(BUILD_DATE) -X $(PKG)/cmd/etcd.gitRevision=$(GIT_REVISION) -X $(PKG)/cmd/etcd.walgVersion=$(WALG_VERSION)"
-
-etcd_install: etcd_build
-	mv $(MAIN_ETCD_PATH)/wal-g $(GOBIN)/wal-g
-
-etcd_clean:
-	(cd $(MAIN_ETCD_PATH) && go clean)
-	./scripts/cleanup.sh
-
-# refactor
-etcd_integration_test: pull_external_images load_docker_common
-	docker compose build etcd
-	docker compose build etcd_tests
-	docker compose up --pull never --exit-code-from etcd_tests etcd_tests
-
-gp_build: $(CMD_FILES) $(PKG_FILES)
-	cd $(MAIN_GP_PATH) && $(SODIUM_CGO) go build -mod vendor -tags "$(BUILD_TAGS)" -o wal-g -gcflags "$(BUILD_GCFLAGS)" -ldflags "-s -w -X $(PKG)/cmd/gp.buildDate=$(BUILD_DATE) -X $(PKG)/cmd/gp.gitRevision=$(GIT_REVISION) -X $(PKG)/cmd/gp.walgVersion=$(WALG_VERSION)"
-
-gp_clean:
-	(cd $(MAIN_GP_PATH) && go clean)
-	./scripts/cleanup.sh
-
-gp_install: gp_build
-	mv $(MAIN_GP_PATH)/wal-g $(GOBIN)/wal-g
-
-gp_test: deps gp_build unlink_brotli gp_integration_test
-
-gp_integration_test: pull_external_images load_docker_common
-	docker compose build gp
-	docker compose build gp_tests
-	docker compose up --pull never --exit-code-from gp_tests gp_tests
-
-cloudberry_build:
-	$(MAKE) gp_build USE_LIBSODIUM=
-
-cloudberry_clean: gp_clean
-
-cloudberry_install: gp_install
-
-cloudberry_test: deps cloudberry_build unlink_brotli cloudberry_integration_test
-
-cloudberry_integration_test: pull_external_images load_docker_common
-	docker compose build cloudberry
-	docker compose build cloudberry_tests
-	docker compose up --pull never s3 cloudberry_tests --force-recreate --exit-code-from cloudberry_tests
 
 st_test: deps pg_build unlink_brotli st_integration_test
 
@@ -475,9 +342,6 @@ endif
 link_external_deps: link_brotli link_libsodium
 
 unlink_external_deps: unlink_brotli unlink_libsodium
-
-install:
-	@echo "Nothing to be done. Use pg_install/mysql_install/mongo_install/fdb_install/gp_install/etcd_install... instead."
 
 link_brotli:
 	@if [ -n "${USE_BROTLI}" ]; then ./link_brotli.sh; fi

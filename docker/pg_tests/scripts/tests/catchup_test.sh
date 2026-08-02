@@ -18,12 +18,18 @@ initdb ${PGDATA_ALPHA}
 pg_ctl -D ${PGDATA_ALPHA} -w start
 PGDATA=${PGDATA_ALPHA} /tmp/scripts/wait_while_pg_not_ready.sh
 
+PG_VERSION_ALPHA=$(cat "${PGDATA_ALPHA}/PG_VERSION")
+
 # preparation for replication
 pushd ${PGDATA_ALPHA}
 psql -c "CREATE ROLE repl WITH REPLICATION PASSWORD 'password' LOGIN;"
 echo "host  replication  repl              127.0.0.1/32  md5" >> pg_hba.conf
 echo "wal_level = replica" >> postgresql.conf
-echo "wal_keep_segments = 100" >> postgresql.conf
+if awk 'BEGIN {exit !('"$PG_VERSION_ALPHA"' >= 13)}'; then
+  echo "wal_keep_size = 1600" >> postgresql.conf
+else
+  echo "wal_keep_segments = 100" >> postgresql.conf
+fi
 echo "max_wal_senders = 4" >> postgresql.conf
 pg_ctl -D ${PGDATA_ALPHA} -w restart
 PGDATA=${PGDATA_ALPHA} /tmp/scripts/wait_while_pg_not_ready.sh
@@ -37,7 +43,7 @@ cp -r ${PGDATA_BETA} ${PGDATA_BETA_1}
 pushd ${PGDATA_BETA}
 echo "port = ${BETA_PORT}" >> postgresql.conf
 echo "hot_standby = on" >> postgresql.conf
-cat > recovery.conf << EOF
+write_recovery_conf ${PGDATA_BETA} << EOF
 standby_mode = 'on'
 primary_conninfo = 'host=127.0.0.1 port=${ALPHA_PORT} user=repl password=password'
 restore_command = 'cp ${PGDATA_BETA}/archive/%f %p'
@@ -69,7 +75,7 @@ wal-g --config=${TMP_CONFIG} catchup-fetch ${PGDATA_BETA} $BACKUP_NAME
 pushd ${PGDATA_BETA}
 echo "port = ${BETA_PORT}" >> postgresql.conf
 echo "hot_standby = on" >> postgresql.conf
-cat > recovery.conf << EOF
+write_recovery_conf ${PGDATA_BETA} << EOF
 standby_mode = 'on'
 primary_conninfo = 'host=127.0.0.1 port=${ALPHA_PORT} user=repl password=password'
 restore_command = 'cp ${PGDATA_BETA}/archive/%f %p'
@@ -83,6 +89,7 @@ pg_dump -h 127.0.0.1 -p ${BETA_PORT} -f ${BETA_DUMP} postgres
 
 pg_ctl -D ${PGDATA_BETA} -w stop
 
+normalize_dump ${ALPHA_DUMP} ${BETA_DUMP}
 diff ${ALPHA_DUMP} ${BETA_DUMP}
 
 # test catchup-send and catchup-receive
@@ -101,7 +108,7 @@ wal-g --config=${TMP_CONFIG} catchup-send ${PGDATA_ALPHA} localhost:1337
 pushd ${PGDATA_BETA}
 echo "port = ${BETA_PORT}" >> postgresql.conf
 echo "hot_standby = on" >> postgresql.conf
-cat > recovery.conf << EOF
+write_recovery_conf ${PGDATA_BETA} << EOF
 standby_mode = 'on'
 primary_conninfo = 'host=127.0.0.1 port=${ALPHA_PORT} user=repl password=password'
 restore_command = 'cp ${PGDATA_BETA}/archive/%f %p'
@@ -115,6 +122,7 @@ pg_dump -h 127.0.0.1 -p ${BETA_PORT} -f ${BETA_DUMP} postgres
 
 pg_ctl -D ${PGDATA_BETA} -w stop
 
+normalize_dump ${ALPHA_DUMP} ${BETA_DUMP}
 diff ${ALPHA_DUMP} ${BETA_DUMP}
 
 /tmp/scripts/drop_pg.sh

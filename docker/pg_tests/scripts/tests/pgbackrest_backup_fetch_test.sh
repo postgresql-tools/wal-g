@@ -36,7 +36,7 @@ s3cmd sync /tmp/pgbackrest-backups/archive s3://pgbackrest-backups
 
 /tmp/scripts/drop_pg.sh
 pgbackrest --stanza=main --pg1-path=${PGDATA} --repo1-path=/tmp/pgbackrest-backups restore
-rm "${PGDATA}/recovery.conf"
+rm -f "${PGDATA}/recovery.conf"
 tar --mtime='UTC 2019-01-01' --sort=name -cf /tmp/pg_data_expected.tar ${PGDATA}
 /tmp/scripts/drop_pg.sh
 
@@ -46,11 +46,12 @@ tar --mtime='UTC 2019-01-01' --sort=name -cf /tmp/pg_data_actual.tar ${PGDATA}
 diff /tmp/pg_data_expected.tar /tmp/pg_data_actual.tar
 echo "Pgbackrest and wal-g backups are the same!"
 
-echo "restore_command = 'wal-g --config=${TMP_CONFIG} pgbackrest wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+echo "restore_command = 'wal-g --config=${TMP_CONFIG} pgbackrest wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 pg_ctl -D ${PGDATA} -w start
 /tmp/scripts/wait_while_pg_not_ready.sh
 pg_dumpall -f /tmp/dump2
 
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 psql -f /tmp/scripts/amcheck.sql -v "ON_ERROR_STOP=1" postgres

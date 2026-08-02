@@ -2,7 +2,7 @@
 
 # WAL-G
 
-WAL-G is an archival restoration tool for PostgreSQL, MySQL/MariaDB, and MS SQL Server (beta for MongoDB and Redis).
+WAL-G is an archival restoration tool for PostgreSQL.
 
 WAL-G is the successor of WAL-E with a number of key differences. WAL-G uses LZ4, LZMA, ZSTD, or Brotli compression, multiple processors, and non-exclusive base backups for Postgres. More information on the original design and implementation of WAL-G can be found on the Citus Data blog post ["Introducing WAL-G by Citus: Faster Disaster Recovery for Postgres"](https://www.citusdata.com/blog/2017/08/18/introducing-wal-g-faster-restores-for-postgres/).
 
@@ -214,7 +214,7 @@ If `FIND_FULL` is specified, WAL-G will calculate minimum backup needed to keep 
 
 ``target`` [FIND_FULL] %name% | --target-user-data %data% will delete the backup specified by name or user data. Unlike other delete commands, this command does not delete any archived WALs.
 
-(Only in Postgres & MySQL) By default, if delta backup is provided as the target, WAL-G will also delete all the dependant delta backups. If `FIND_FULL` is specified, WAL-G will delete all backups with the same base backup as the target.
+(PostgreSQL) By default, if delta backup is provided as the target, WAL-G will also delete all the dependant delta backups. If `FIND_FULL` is specified, WAL-G will delete all backups with the same base backup as the target.
 
 ### Examples
 
@@ -255,31 +255,10 @@ Databases
 ### PostgreSQL
 [Information about installing, configuration and usage](PostgreSQL.md)
 
-### MySQL/MariaDB
-[Information about installing, configuration and usage](MySQL.md)
-
-### SQLServer
-[Information about installing, configuration and usage](SQLServer.md)
-
-### Mongo [Beta]
-[Information about installing, configuration and usage](MongoDB.md)
-
-### FoundationDB [Work in progress]
-[Information about installing, configuration and usage](FoundationDB.md)
-
-### Redis [Beta]
-[Information about installing, configuration and usage](Redis.md)
-
-### Greenplum / Cloudberry [Production ready]
-[Information about installing, configuration and usage](Greenplum.md)
-
-### ETCD [Work in progress]
-[Information about installing, configuration and usage](ETCD.md)
-
 Development
 -----------
 
-The following steps describe how to build WAL-G for PostgreSQL, but the process is the same for other databases. For example, to build WAL-G for MySQL, use the `make mysql_build` instead of `make pg_build`.
+The following steps describe how to build WAL-G for PostgreSQL.
 
 Optional:
 
@@ -360,9 +339,9 @@ To build on ARM64, set the corresponding `GOOS`/`GOARCH` environment variables:
 env GOOS=darwin GOARCH=arm64 make install_and_build_pg
 ```
 
-To build linux build on ARM MacOS:
+To build for a different platform, set the corresponding `GOOS`/`GOARCH` environment variables:
 ```
-GOOS=linux GOARCH=amd64 make mysql_build
+env GOOS=linux GOARCH=arm64 make pg_build
 ```
 
 The compiled binary to run is `main/pg/wal-g`

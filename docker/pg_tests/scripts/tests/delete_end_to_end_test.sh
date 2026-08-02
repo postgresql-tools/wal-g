@@ -45,7 +45,7 @@ for i in ${FIRST} LATEST
 do
 /tmp/scripts/drop_pg.sh
     wal-g --config=${TMP_CONFIG} backup-fetch ${PGDATA} ${i}
-    echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& /usr/bin/wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+    echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& /usr/bin/wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
     pg_ctl -D ${PGDATA} -w start
     /tmp/scripts/wait_while_pg_not_ready.sh
     wal-g --config=${TMP_CONFIG} backup-list
@@ -53,7 +53,9 @@ do
     pg_dumpall -f /tmp/dump${i}
 done
 
+normalize_dump /tmp/dump4 /tmp/dump${FIRST}
 diff /tmp/dump4 /tmp/dump${FIRST}
+normalize_dump /tmp/dump9 /tmp/dumpLATEST
 diff /tmp/dump9 /tmp/dumpLATEST
 /tmp/scripts/drop_pg.sh
 rm ${TMP_CONFIG}

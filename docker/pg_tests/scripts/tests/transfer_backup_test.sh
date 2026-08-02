@@ -1,5 +1,8 @@
 #!/bin/sh
 set -e -x
+
+. /tmp/tests/test_functions/prepare_config.sh
+
 CONFIG_FILE="/tmp/configs/transfer_backup_test_config.json"
 FAILOVER_CONFIG_FILE="/tmp/configs/transfer_backup_test_config_failover.json"
 COMMON_CONFIG="/tmp/configs/common_config.json"
@@ -37,7 +40,7 @@ wal-g --config=${TMP_CONFIG} st transfer pg-wals --source=failover --target=defa
 
 wal-g --config=${TMP_CONFIG} backup-fetch ${PGDATA} LATEST
 
-echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 
 wal-g --config=${TMP_CONFIG} st ls -r --target failover
 wal-g --config=${TMP_CONFIG} st ls -r --target default
@@ -46,6 +49,7 @@ pg_ctl -D ${PGDATA} -w start
 /tmp/scripts/wait_while_pg_not_ready.sh
 pg_dumpall -f /tmp/dump2
 
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 psql -f /tmp/scripts/amcheck.sql -v "ON_ERROR_STOP=1" postgres

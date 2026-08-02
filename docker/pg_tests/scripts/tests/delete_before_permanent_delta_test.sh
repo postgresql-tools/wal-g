@@ -48,10 +48,11 @@ first_backup_name=`wal-g --config=${TMP_CONFIG} backup-list | sed '2q;d' | cut -
 wal-g backup-fetch --config=${TMP_CONFIG} ${PGDATA} $first_backup_name
 
 echo "restore_command = 'echo \"WAL file restoration: %f, %p\"&& \
-/usr/bin/wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" > ${PGDATA}/recovery.conf
+/usr/bin/wal-g --config=${TMP_CONFIG} wal-fetch \"%f\" \"%p\"'" | write_recovery_conf "${PGDATA}"
 pg_ctl -D ${PGDATA} -w start
 /tmp/scripts/wait_while_pg_not_ready.sh
 pg_dumpall -f /tmp/dump2
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 wal-g --config=${TMP_CONFIG} backup-list --detail
@@ -73,6 +74,7 @@ wal-g --config=${TMP_CONFIG} backup-list > /tmp/dump1
 wal-g --config=${TMP_CONFIG} delete everything --confirm || true
 
 wal-g --config=${TMP_CONFIG} backup-list > /tmp/dump2
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 rm /tmp/dump2
@@ -85,11 +87,13 @@ wal-g --config=${TMP_CONFIG} backup-list 2> /tmp/2 1> /tmp/1
 
 # check that stdout not include any backup
 ! cat /tmp/1 | egrep -o "[0-9A-F]{24}" > /tmp/dump1
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 # check that stderr not include any backup
 # stderr shuld be "INFO: ... No backups found"
 ! cat /tmp/2 | egrep -o "[0-9A-F]{24}" > /tmp/dump1
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 /tmp/scripts/drop_pg.sh
