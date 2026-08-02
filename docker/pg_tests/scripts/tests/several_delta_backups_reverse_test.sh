@@ -47,6 +47,7 @@ pg_dumpall -f /tmp/dump2
 
 psql -f /tmp/scripts/amcheck.sql -v "ON_ERROR_STOP=1" postgres
 
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 /tmp/scripts/drop_pg.sh
 rm ${TMP_CONFIG}

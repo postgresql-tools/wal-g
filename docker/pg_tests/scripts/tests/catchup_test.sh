@@ -89,6 +89,7 @@ pg_dump -h 127.0.0.1 -p ${BETA_PORT} -f ${BETA_DUMP} postgres
 
 pg_ctl -D ${PGDATA_BETA} -w stop
 
+normalize_dump ${ALPHA_DUMP} ${BETA_DUMP}
 diff ${ALPHA_DUMP} ${BETA_DUMP}
 
 # test catchup-send and catchup-receive
@@ -121,6 +122,7 @@ pg_dump -h 127.0.0.1 -p ${BETA_PORT} -f ${BETA_DUMP} postgres
 
 pg_ctl -D ${PGDATA_BETA} -w stop
 
+normalize_dump ${ALPHA_DUMP} ${BETA_DUMP}
 diff ${ALPHA_DUMP} ${BETA_DUMP}
 
 /tmp/scripts/drop_pg.sh

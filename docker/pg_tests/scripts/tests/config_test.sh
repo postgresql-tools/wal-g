@@ -36,6 +36,7 @@ pg_ctl -D "${PGDATA}" -w start
 
 pg_dumpall -f /tmp/dump2
 
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 pkill -9 postgres

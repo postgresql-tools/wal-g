@@ -43,6 +43,7 @@ pg_ctl -D ${PGDATA} -w start
 /tmp/scripts/wait_while_pg_not_ready.sh
 pg_dumpall -f /tmp/dump2
 
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 /tmp/scripts/drop_pg.sh
 rm ${TMP_CONFIG}

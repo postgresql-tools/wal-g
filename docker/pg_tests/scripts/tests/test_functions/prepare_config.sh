@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# PG 15+ pg_dump/pg_dumpall emit \restrict/\unrestrict with per-invocation random
+# keys. Strip them so dumps can be compared.
+normalize_dump() {
+  sed -i '/^\\restrict /d; /^\\unrestrict /d' "$@"
+}
+
 # Writes recovery configuration in a version-appropriate way.
 # PG 12 removed recovery.conf: settings go into postgresql.conf and recovery
 # mode is signaled by a .signal file (recovery.signal for archive recovery,

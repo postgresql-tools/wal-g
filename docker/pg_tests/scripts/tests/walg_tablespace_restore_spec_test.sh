@@ -175,6 +175,7 @@ pg_dumpall -f /tmp/dump2
 # Verify data is identical
 sed -i "s|LOCATION '/tmp/spaces/space'|LOCATION '/tmp/new_spaces/new_space'|" /tmp/dump1
 sed -i "s|LOCATION '/tmp/spaces/space2'|LOCATION '/tmp/new_spaces/new_space2'|" /tmp/dump1
+normalize_dump /tmp/dump1 /tmp/dump2
 diff /tmp/dump1 /tmp/dump2
 
 # Verify tablespace files are in the NEW locations

@@ -53,7 +53,9 @@ do
     pg_dumpall -f /tmp/dump${i}
 done
 
+normalize_dump /tmp/dump4 /tmp/dump${FIRST}
 diff /tmp/dump4 /tmp/dump${FIRST}
+normalize_dump /tmp/dump9 /tmp/dumpLATEST
 diff /tmp/dump9 /tmp/dumpLATEST
 /tmp/scripts/drop_pg.sh
 rm ${TMP_CONFIG}
