@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/wal-g/tracelog"
 
 	"github.com/lateos-ai/wal-g/internal"
@@ -34,6 +35,18 @@ func (t BackupVerifyTier) MarshalText() ([]byte, error) {
 	return []byte("2"), nil
 }
 
+func (t *BackupVerifyTier) UnmarshalText(data []byte) error {
+	switch string(data) {
+	case "1":
+		*t = Tier1
+	case "2":
+		*t = Tier2
+	default:
+		return fmt.Errorf("unknown backup verify tier %q", data)
+	}
+	return nil
+}
+
 type VerifyFileResult struct {
 	Name             string `json:"name"`
 	StoredSHA256     string `json:"stored_sha256,omitempty"`
@@ -47,6 +60,25 @@ type ChecksumCoverage struct {
 	HasChecksum int `json:"has_checksum"`
 	NoChecksum  int `json:"no_checksum"`
 	Total       int `json:"total"`
+}
+
+// DecryptCanaryResult reports whether the crypter and compression codec configured
+// on *this* host can actually open the backup's data. The rest of Tier 1 is
+// metadata-only, so without this check a green Tier 1 says nothing about whether
+// the key available here can decrypt the bytes - the exact failure that only
+// surfaces during a restore, when it is too late to do anything about it.
+//
+// One partition (the smallest) is fetched and the first tar header is read. Nothing
+// else is downloaded, so the cost stays in the "near-zero egress" budget Tier 1 promises.
+type DecryptCanaryResult struct {
+	Attempted  bool   `json:"attempted"`
+	Pass       bool   `json:"pass"`
+	SkipReason string `json:"skip_reason,omitempty"`
+	Part       string `json:"part,omitempty"`
+	PartSize   int64  `json:"part_size,omitempty"`
+	Crypter    string `json:"crypter,omitempty"`
+	TarEntries int    `json:"tar_entries"`
+	Error      string `json:"error,omitempty"`
 }
 
 type BackupVerifyResult struct {
@@ -64,6 +96,8 @@ type BackupVerifyResult struct {
 	DeployMetadata interface{} `json:"deploy_metadata"`
 
 	ChecksumCoverage ChecksumCoverage `json:"checksum_coverage"`
+
+	DecryptCanary DecryptCanaryResult `json:"decrypt_canary"`
 
 	WALCheckAvailable bool     `json:"wal_check_available"`
 	WALCheckDetails   string   `json:"wal_check_details,omitempty"`
@@ -123,20 +157,33 @@ func (v *verifyTarInterpreter) Interpret(reader io.Reader, header *tar.Header) e
 	return nil
 }
 
+// BackupVerifyOptions carries the tunables for a single backup-verify run.
+type BackupVerifyOptions struct {
+	// BackupName is the backup to verify; empty means LATEST.
+	BackupName string
+	// SamplePct > 0 promotes the run to Tier 2 and sets the partition sample size.
+	SamplePct int
+	// Seed makes Tier 2 sampling reproducible; 0 means time-based.
+	Seed int64
+	// TargetLSN and TargetTime bound the WAL chain verification scope.
+	TargetLSN  string
+	TargetTime string
+	// Format is "text" or "json".
+	Format string
+	// SkipCanary disables the Tier 1 decrypt canary, making the run purely
+	// metadata-based (no object data is fetched at all).
+	SkipCanary bool
+}
+
 func HandleBackupVerify(
 	rootFolder storage.Folder,
-	backupName string,
-	samplePct int,
-	seed int64,
-	targetLSN string,
-	targetTime string,
-	format string,
+	opts BackupVerifyOptions,
 	output io.Writer,
 ) int {
 	startTime := time.Now()
 	result := &BackupVerifyResult{
 		Pass:                true,
-		BackupName:          backupName,
+		BackupName:          opts.BackupName,
 		Tier:                Tier1,
 		SentinelExists:      true,
 		FilesMetadataExists: true,
@@ -144,12 +191,12 @@ func HandleBackupVerify(
 		WALCheckAvailable:   true,
 	}
 
-	backup, err := resolveBackup(rootFolder, backupName)
+	backup, err := resolveBackup(rootFolder, opts.BackupName)
 	if err != nil {
 		result.Pass = false
 		result.SentinelExists = false
 		result.SentinelError = err.Error()
-		writeBackupVerifyOutput(result, format, output, startTime)
+		writeBackupVerifyOutput(result, opts.Format, output, startTime)
 		return 1
 	}
 	result.BackupName = backup.Name
@@ -160,7 +207,7 @@ func HandleBackupVerify(
 		result.SentinelExists = false
 		result.SentinelError = err.Error()
 		result.FilesMetadataExists = false
-		writeBackupVerifyOutput(result, format, output, startTime)
+		writeBackupVerifyOutput(result, opts.Format, output, startTime)
 		return 1
 	}
 
@@ -168,7 +215,7 @@ func HandleBackupVerify(
 		result.FilesMetadataExists = true
 	}
 
-	err = checkManifestCompleteness(&backup, filesMeta, result)
+	partObjects, err := checkManifestCompleteness(&backup, filesMeta, result)
 	if err != nil {
 		result.Pass = false
 		tracelog.WarningLogger.Printf("manifest completeness check error: %v", err)
@@ -178,23 +225,28 @@ func HandleBackupVerify(
 
 	extractDeployMetadata(sentinel, result)
 
+	runDecryptCanary(&backup, filesMeta, partObjects, opts, result)
+
 	checkWALChain(rootFolder, backup.Name, result)
 
-	if samplePct > 0 {
+	if opts.SamplePct > 0 {
 		result.Tier = Tier2
-		result.SamplePercent = samplePct
-		err = runTier2(&backup, filesMeta, samplePct, seed, result)
+		result.SamplePercent = opts.SamplePct
+		err = runTier2(&backup, filesMeta, opts.SamplePct, opts.Seed, result)
 		if err != nil {
 			tracelog.WarningLogger.Printf("Tier 2 error: %v", err)
 		}
 	}
 
 	result.Pass = result.Pass && len(result.MissingParts) == 0 && result.SentinelExists && result.SentinelError == ""
+	if result.DecryptCanary.Attempted && !result.DecryptCanary.Pass {
+		result.Pass = false
+	}
 	if result.Tier2Pass != nil && !*result.Tier2Pass {
 		result.Pass = false
 	}
 
-	writeBackupVerifyOutput(result, format, output, startTime)
+	writeBackupVerifyOutput(result, opts.Format, output, startTime)
 	return determineExitCode(result)
 }
 
@@ -214,15 +266,22 @@ func resolveBackup(rootFolder storage.Folder, name string) (Backup, error) {
 	return NewBackup(baseBackupFolder, latest.BackupName)
 }
 
-func checkManifestCompleteness(backup *Backup, filesMeta FilesMetadataDto, result *BackupVerifyResult) error {
+// checkManifestCompleteness reports partitions the manifest references but storage
+// does not have. It returns the partition listing so later checks can reuse it
+// instead of paying for a second LIST.
+func checkManifestCompleteness(
+	backup *Backup,
+	filesMeta FilesMetadataDto,
+	result *BackupVerifyResult,
+) ([]storage.Object, error) {
 	if len(filesMeta.TarFileSets) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	tarPartitionFolder := backup.GetTarPartitionFolder()
 	objects, _, err := tarPartitionFolder.ListFolder()
 	if err != nil {
-		return fmt.Errorf("failed to list tar partition folder: %w", err)
+		return nil, fmt.Errorf("failed to list tar partition folder: %w", err)
 	}
 
 	existing := make(map[string]bool, len(objects))
@@ -236,7 +295,7 @@ func checkManifestCompleteness(backup *Backup, filesMeta FilesMetadataDto, resul
 		}
 	}
 
-	return nil
+	return objects, nil
 }
 
 func computeChecksumCoverage(filesMeta FilesMetadataDto, result *BackupVerifyResult) {
@@ -256,6 +315,109 @@ func extractDeployMetadata(sentinel BackupSentinelDto, result *BackupVerifyResul
 	if ok {
 		result.DeployMetadata = meta
 	}
+}
+
+// runDecryptCanary fetches the smallest tar partition and proves it can be
+// decrypted, decompressed, and parsed as a tar stream with the configuration
+// present on this host.
+//
+// It is skipped when Tier 2 is running, because Tier 2 decrypts a whole sample of
+// partitions and would make this redundant.
+func runDecryptCanary(
+	backup *Backup,
+	filesMeta FilesMetadataDto,
+	partObjects []storage.Object,
+	opts BackupVerifyOptions,
+	result *BackupVerifyResult,
+) {
+	switch {
+	case opts.SkipCanary:
+		result.DecryptCanary.SkipReason = "disabled by --no-canary"
+		return
+	case opts.SamplePct > 0:
+		result.DecryptCanary.SkipReason = "covered by Tier 2 sampling"
+		return
+	}
+
+	smallest := smallestVerifiablePart(filesMeta, partObjects)
+	if smallest == nil {
+		result.DecryptCanary.SkipReason = "no tar partitions available to sample"
+		return
+	}
+
+	result.DecryptCanary.Attempted = true
+	result.DecryptCanary.Part = smallest.GetName()
+	result.DecryptCanary.PartSize = smallest.GetSize()
+
+	// Deliberately not internal.ConfigureCrypter: that variant calls Fatal on a
+	// misconfigured crypter, and "the key is not usable here" is precisely the
+	// finding this check exists to report rather than crash on.
+	crypter, err := internal.ConfigureCrypterForSpecificConfig(viper.GetViper())
+	if err != nil {
+		result.DecryptCanary.Error = fmt.Sprintf("failed to configure crypter: %v", err)
+		return
+	}
+
+	result.DecryptCanary.Crypter = "none"
+	if crypter != nil {
+		result.DecryptCanary.Crypter = crypter.Name()
+	}
+
+	entries, err := readCanaryPart(backup.GetTarPartitionFolder(), smallest.GetName(), crypter)
+	if err != nil {
+		result.DecryptCanary.Error = err.Error()
+		return
+	}
+
+	result.DecryptCanary.TarEntries = entries
+	result.DecryptCanary.Pass = true
+}
+
+// smallestVerifiablePart picks the cheapest partition to fetch. Only partitions the
+// manifest actually references are considered, so unrelated objects that happen to
+// share the folder are never chosen.
+func smallestVerifiablePart(filesMeta FilesMetadataDto, partObjects []storage.Object) storage.Object {
+	var smallest storage.Object
+	for _, obj := range partObjects {
+		if len(filesMeta.TarFileSets) > 0 {
+			if _, referenced := filesMeta.TarFileSets[obj.GetName()]; !referenced {
+				continue
+			}
+		}
+		if smallest == nil || obj.GetSize() < smallest.GetSize() {
+			smallest = obj
+		}
+	}
+	return smallest
+}
+
+// readCanaryPart opens a partition and reads only its first tar header. Entry
+// bodies are never read, so the transfer is bounded to the head of the object
+// regardless of how large the partition is.
+func readCanaryPart(folder storage.Folder, partName string, crypter crypto.Crypter) (int, error) {
+	reader, err := folder.ReadObject(partName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read %s: %w", partName, err)
+	}
+	defer reader.Close()
+
+	decompressed, err := internal.DecryptAndDecompressTar(reader, partName, crypter)
+	if err != nil {
+		return 0, fmt.Errorf("failed to decrypt/decompress %s: %w", partName, err)
+	}
+	defer decompressed.Close()
+
+	_, err = tar.NewReader(decompressed).Next()
+	if err == io.EOF {
+		// A partition with no entries still decrypted and parsed cleanly, which is
+		// all this check claims to establish.
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse tar stream in %s: %w", partName, err)
+	}
+
+	return 1, nil
 }
 
 func checkWALChain(rootFolder storage.Folder, backupName string, result *BackupVerifyResult) {
@@ -510,6 +672,18 @@ func writeTextOutput(result *BackupVerifyResult, output io.Writer) {
 		fmt.Fprintf(output, "%v\n", d)
 	}
 
+	fmt.Fprintf(output, "Decrypt canary: ")
+	switch {
+	case !result.DecryptCanary.Attempted:
+		fmt.Fprintf(output, "SKIPPED (%s)\n", result.DecryptCanary.SkipReason)
+	case result.DecryptCanary.Pass:
+		fmt.Fprintf(output, "OK (part %s, %d bytes, crypter=%s)\n",
+			result.DecryptCanary.Part, result.DecryptCanary.PartSize, result.DecryptCanary.Crypter)
+	default:
+		fmt.Fprintf(output, "FAIL (part %s: %s)\n",
+			result.DecryptCanary.Part, result.DecryptCanary.Error)
+	}
+
 	fmt.Fprintf(output, "WAL chain: ")
 	if !result.WALCheckAvailable {
 		fmt.Fprintf(output, "UNAVAILABLE (%s)\n", result.WALCheckDetails)
@@ -580,6 +754,10 @@ func determineExitCode(result *BackupVerifyResult) int {
 	}
 
 	if !result.SentinelExists || len(result.MissingParts) > 0 {
+		return 1
+	}
+
+	if result.DecryptCanary.Attempted && !result.DecryptCanary.Pass {
 		return 1
 	}
 

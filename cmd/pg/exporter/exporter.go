@@ -20,9 +20,13 @@ type WalgExporter struct {
 	walgConfigPath string
 
 	// Scrape intervals
-	backupScrapeInterval  time.Duration
-	verifyScrapeInterval  time.Duration
-	storageScrapeInterval time.Duration
+	backupScrapeInterval       time.Duration
+	verifyScrapeInterval       time.Duration
+	storageScrapeInterval      time.Duration
+	backupVerifyScrapeInterval time.Duration
+
+	// backupVerifySamplePct promotes backup-verify scrapes to Tier 2 when > 0.
+	backupVerifySamplePct int
 
 	// Metrics
 	pitrWindow   prometheus.Gauge
@@ -42,6 +46,14 @@ type WalgExporter struct {
 	walVerifyCheck       *prometheus.GaugeVec
 	walIntegrity         *prometheus.GaugeVec
 	verifyScrapeDuration prometheus.Gauge
+
+	// Metrics of backup-verify
+	backupVerifyStatus         *prometheus.GaugeVec
+	backupVerifyTimestamp      *prometheus.GaugeVec
+	backupVerifyDecryptCanary  *prometheus.GaugeVec
+	backupVerifyMissingParts   *prometheus.GaugeVec
+	backupChecksumCoverage     *prometheus.GaugeVec
+	backupVerifyScrapeDuration prometheus.Gauge
 
 	// Storage aliveness metrics
 	storageAlive   prometheus.Gauge
@@ -104,6 +116,43 @@ type TimelineDetail struct {
 	HighestStorageTimelineID int `json:"highest_storage_timeline_id"`
 }
 
+// BackupVerifyResponse represents information from backup-verify --format json.
+// Only the fields the exporter turns into metrics are modeled; backup-verify
+// reports more than this.
+type BackupVerifyResponse struct {
+	BackupName       string               `json:"backup_name"`
+	Tier             string               `json:"tier"`
+	Pass             bool                 `json:"pass"`
+	MissingParts     []string             `json:"missing_parts"`
+	ChecksumCoverage ChecksumCoverageData `json:"checksum_coverage"`
+	DecryptCanary    DecryptCanaryData    `json:"decrypt_canary"`
+}
+
+// ChecksumCoverageData mirrors the checksum_coverage object.
+type ChecksumCoverageData struct {
+	HasChecksum int `json:"has_checksum"`
+	NoChecksum  int `json:"no_checksum"`
+	Total       int `json:"total"`
+}
+
+// DecryptCanaryData mirrors the decrypt_canary object: whether the key configured
+// where the backup would be restored can actually open the backup's data.
+type DecryptCanaryData struct {
+	Attempted bool   `json:"attempted"`
+	Pass      bool   `json:"pass"`
+	Crypter   string `json:"crypter"`
+	Error     string `json:"error"`
+}
+
+// CoverageRatio returns the fraction of files carrying a stored checksum, or 0
+// when the backup records no files at all.
+func (c ChecksumCoverageData) CoverageRatio() float64 {
+	if c.Total <= 0 {
+		return 0
+	}
+	return float64(c.HasChecksum) / float64(c.Total)
+}
+
 // Helper method to get backup type
 func (b *BackupInfo) GetBackupType() string {
 	// WAL-G doesn't include is_full in JSON output, so we determine backup type
@@ -155,15 +204,19 @@ func NewWalgExporter(
 	backupScrapeInterval time.Duration,
 	verifyScrapeInterval time.Duration,
 	storageScrapeInterval time.Duration,
+	backupVerifyScrapeInterval time.Duration,
+	backupVerifySamplePct int,
 	walgConfigPath string,
 ) *WalgExporter {
 	return &WalgExporter{
-		logger:                logger,
-		walgPath:              walgPath,
-		backupScrapeInterval:  backupScrapeInterval,
-		verifyScrapeInterval:  verifyScrapeInterval,
-		storageScrapeInterval: storageScrapeInterval,
-		walgConfigPath:        walgConfigPath,
+		logger:                     logger,
+		walgPath:                   walgPath,
+		backupScrapeInterval:       backupScrapeInterval,
+		verifyScrapeInterval:       verifyScrapeInterval,
+		storageScrapeInterval:      storageScrapeInterval,
+		backupVerifyScrapeInterval: backupVerifyScrapeInterval,
+		backupVerifySamplePct:      backupVerifySamplePct,
+		walgConfigPath:             walgConfigPath,
 
 		pitrWindow: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "walg_pitr_window_seconds",
@@ -225,6 +278,36 @@ func NewWalgExporter(
 			Help: "Time taken to execute 'wal-verify' during the last collector run.",
 		}),
 
+		backupVerifyStatus: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "walg_backup_verify_status",
+			Help: "Backup verification result (1 = pass, 0 = fail).",
+		}, []string{"backup_name", "tier"}),
+
+		backupVerifyTimestamp: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "walg_backup_verify_timestamp",
+			Help: "Unix timestamp of the last completed backup verification.",
+		}, []string{"backup_name"}),
+
+		backupVerifyDecryptCanary: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "walg_backup_verify_decrypt_canary",
+			Help: "Whether the locally configured key can open the backup (1 = yes, 0 = no, -1 = not checked).",
+		}, []string{"backup_name", "crypter"}),
+
+		backupVerifyMissingParts: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "walg_backup_verify_missing_parts",
+			Help: "Number of tar partitions the manifest references but storage does not have.",
+		}, []string{"backup_name"}),
+
+		backupChecksumCoverage: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "walg_backup_checksum_coverage_ratio",
+			Help: "Fraction of files in the backup that carry a stored SHA256 checksum (0-1).",
+		}, []string{"backup_name"}),
+
+		backupVerifyScrapeDuration: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "walg_backup_verify_duration_seconds",
+			Help: "Time taken to execute 'backup-verify' during the last collector run.",
+		}),
+
 		scrapeErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "walg_scrape_errors_total",
 			Help: "Total number of scrape errors",
@@ -256,6 +339,12 @@ func (e *WalgExporter) Describe(ch chan<- *prometheus.Desc) {
 	e.backupCompressedSize.Describe(ch)
 	e.backupScrapeDuration.Describe(ch)
 	e.verifyScrapeDuration.Describe(ch)
+	e.backupVerifyStatus.Describe(ch)
+	e.backupVerifyTimestamp.Describe(ch)
+	e.backupVerifyDecryptCanary.Describe(ch)
+	e.backupVerifyMissingParts.Describe(ch)
+	e.backupChecksumCoverage.Describe(ch)
+	e.backupVerifyScrapeDuration.Describe(ch)
 	e.scrapeErrors.Describe(ch)
 	e.storageAlive.Describe(ch)
 	e.storageLatency.Describe(ch)
@@ -275,6 +364,12 @@ func (e *WalgExporter) Collect(ch chan<- prometheus.Metric) {
 	e.backupCompressedSize.Collect(ch)
 	e.backupScrapeDuration.Collect(ch)
 	e.verifyScrapeDuration.Collect(ch)
+	e.backupVerifyStatus.Collect(ch)
+	e.backupVerifyTimestamp.Collect(ch)
+	e.backupVerifyDecryptCanary.Collect(ch)
+	e.backupVerifyMissingParts.Collect(ch)
+	e.backupChecksumCoverage.Collect(ch)
+	e.backupVerifyScrapeDuration.Collect(ch)
 	e.scrapeErrors.Collect(ch)
 	e.storageAlive.Collect(ch)
 	e.storageLatency.Collect(ch)
@@ -288,11 +383,14 @@ func (e *WalgExporter) Start(ctx context.Context) {
 	defer tickerBackup.Stop()
 	tickerWalVerify := time.NewTicker(e.verifyScrapeInterval)
 	defer tickerWalVerify.Stop()
+	tickerBackupVerify := time.NewTicker(e.backupVerifyScrapeInterval)
+	defer tickerBackupVerify.Stop()
 
 	// Initial scrape
 	e.checkStorageAliveness()
 	e.scrapeBackupMetrics()
 	e.scrapeWalMetrics()
+	e.scrapeBackupVerifyMetrics()
 
 	e.logger.Info("Initial WAL-G metrics scrape completed; starting periodic collection")
 	for {
@@ -306,6 +404,8 @@ func (e *WalgExporter) Start(ctx context.Context) {
 			e.scrapeBackupMetrics()
 		case <-tickerWalVerify.C:
 			e.scrapeWalMetrics()
+		case <-tickerBackupVerify.C:
+			e.scrapeBackupVerifyMetrics()
 		}
 	}
 }
@@ -355,6 +455,98 @@ func (e *WalgExporter) scrapeWalMetrics() {
 	e.updateWalMetrics(verifyData)
 
 	e.logger.Info("Metrics for WALs verify scrape completed", "duration", time.Since(start))
+}
+
+// scrapeBackupVerifyMetrics collects backup-verify metrics from WAL-G
+func (e *WalgExporter) scrapeBackupVerifyMetrics() {
+	start := time.Now()
+	defer func() {
+		e.backupVerifyScrapeDuration.Set(time.Since(start).Seconds())
+	}()
+
+	verifyData, err := e.getBackupVerify()
+	if err != nil {
+		e.logger.Error("Error getting backup verify info", "error", err, "operation", "backup-verify")
+		e.scrapeErrors.Inc()
+		e.errors.WithLabelValues("backup-verify", "command_failed").Inc()
+		return
+	}
+
+	e.updateBackupVerifyMetrics(verifyData)
+
+	e.logger.Info("Metrics for backup verify scrape completed",
+		"duration", time.Since(start), "backup", verifyData.BackupName, "pass", verifyData.Pass)
+}
+
+// getBackupVerify executes wal-g backup-verify --format json against the latest backup.
+func (e *WalgExporter) getBackupVerify() (*BackupVerifyResponse, error) {
+	args := []string{"backup-verify", "--format", "json"}
+	if e.backupVerifySamplePct > 0 {
+		args = append(args, "--sample", strconv.Itoa(e.backupVerifySamplePct))
+	}
+	if e.walgConfigPath != "" {
+		args = append(args, "--config", e.walgConfigPath)
+	}
+	cmd := exec.Command(e.walgPath, args...)
+	output, err := cmd.Output()
+
+	// backup-verify exits non-zero when the backup fails verification, and that is
+	// exactly the case worth alerting on. Parse stdout first and only treat the
+	// exit status as a scrape failure if no usable report came back with it.
+	var verifyResponse BackupVerifyResponse
+	if parseErr := json.Unmarshal(output, &verifyResponse); parseErr != nil {
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute backup-verify: %w", err)
+		}
+		return nil, fmt.Errorf("failed to parse backup-verify output: %w", parseErr)
+	}
+
+	return &verifyResponse, nil
+}
+
+// updateBackupVerifyMetrics updates backup-verify-related metrics
+func (e *WalgExporter) updateBackupVerifyMetrics(verifyData *BackupVerifyResponse) {
+	// Reset so a backup that ages out of the report does not leave stale series behind.
+	e.backupVerifyStatus.Reset()
+	e.backupVerifyTimestamp.Reset()
+	e.backupVerifyDecryptCanary.Reset()
+	e.backupVerifyMissingParts.Reset()
+	e.backupChecksumCoverage.Reset()
+
+	name := verifyData.BackupName
+	tier := verifyData.Tier
+	if tier == "" {
+		tier = "1"
+	}
+
+	status := 0.0
+	if verifyData.Pass {
+		status = 1.0
+	}
+	e.backupVerifyStatus.WithLabelValues(name, tier).Set(status)
+
+	e.backupVerifyTimestamp.WithLabelValues(name).Set(float64(time.Now().Unix()))
+
+	e.backupVerifyMissingParts.WithLabelValues(name).Set(float64(len(verifyData.MissingParts)))
+
+	e.backupChecksumCoverage.WithLabelValues(name).Set(verifyData.ChecksumCoverage.CoverageRatio())
+
+	// -1 keeps "we never checked" distinguishable from "we checked and the key
+	// does not work" - alerting on == 0 would otherwise silently cover both.
+	var canary float64
+	switch {
+	case !verifyData.DecryptCanary.Attempted:
+		canary = -1.0
+	case verifyData.DecryptCanary.Pass:
+		canary = 1.0
+	default:
+		canary = 0.0
+	}
+	crypter := verifyData.DecryptCanary.Crypter
+	if crypter == "" {
+		crypter = "unknown"
+	}
+	e.backupVerifyDecryptCanary.WithLabelValues(name, crypter).Set(canary)
 }
 
 // getBackupInfo executes wal-g backup-list --detail --json

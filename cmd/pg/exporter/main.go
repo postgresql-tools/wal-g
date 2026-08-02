@@ -23,6 +23,11 @@ var (
 	verifyScrapeInterval  = flag.Duration("wal-verify.scrape-interval", 5*time.Minute, "Interval between wal-verify scrapes.")
 	storageScrapeInterval = flag.Duration("storage-check.scrape-interval", 30*time.Second, "Interval between storage scrapes.")
 	walgConfigPath        = flag.String("walg.config-path", "", "Path to the wal-g config file.")
+
+	backupVerifyScrapeInterval = flag.Duration("backup-verify.scrape-interval", 15*time.Minute,
+		"Interval between backup-verify scrapes.")
+	backupVerifySamplePct = flag.Int("backup-verify.sample-percent", 0,
+		"Percentage of tar partitions backup-verify downloads (Tier 2). 0 keeps scrapes on metadata-only Tier 1.")
 )
 
 func main() {
@@ -37,10 +42,12 @@ func main() {
 		"metrics_path", *metricsPath,
 		"walg_path", *walgPath,
 		"walg_config", *walgConfigPath,
+		"backup_verify_sample_percent", *backupVerifySamplePct,
 		slog.Group("intervals",
 			slog.Duration("backup", *backupScrapeInterval),
 			slog.Duration("verify", *verifyScrapeInterval),
 			slog.Duration("storage", *storageScrapeInterval),
+			slog.Duration("backup_verify", *backupVerifyScrapeInterval),
 		),
 	)
 
@@ -61,7 +68,8 @@ func main() {
 	}
 
 	// Create and register the exporter
-	exporter := NewWalgExporter(logger, *walgPath, *backupScrapeInterval, *verifyScrapeInterval, *storageScrapeInterval, *walgConfigPath)
+	exporter := NewWalgExporter(logger, *walgPath, *backupScrapeInterval, *verifyScrapeInterval,
+		*storageScrapeInterval, *backupVerifyScrapeInterval, *backupVerifySamplePct, *walgConfigPath)
 
 	prometheus.MustRegister(exporter)
 

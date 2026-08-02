@@ -26,6 +26,15 @@ case "$COMMAND" in
       exit 0
     fi
     ;;
+  "backup-verify")
+    if [[ "$2" == "--format" && "$3" == "json" ]]; then
+      # Mock backup-verify. The fixture describes a failing backup, so exit
+      # non-zero the way the real command does - the exporter has to keep
+      # parsing stdout in that case.
+      cat ./testdata/backup-verify.json
+      exit 1
+    fi
+    ;;
   "st")
     if [[ "$2" == "check" && "$3" == "read" ]]; then
       # Mock storage check - simulate successful storage connectivity

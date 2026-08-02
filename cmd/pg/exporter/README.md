@@ -38,6 +38,21 @@ The exporter provides the following metrics:
 - `walg_wal_verify_status{operation}`: WAL verify status (1 = OK, 0 = FAILURE, 2 = WARNING, -1 = UNKNOWN)
 - `walg_wal_integrity_status{timeline_id, timeline_hex}`: WAL integrity status (1 = FOUND, 0 = MISSING)
 
+### Backup Verification Metrics
+
+Sourced from `backup-verify`, which runs against the latest backup.
+
+- `walg_backup_verify_status{backup_name, tier}`: Backup verification result (1 = pass, 0 = fail). `tier` is `1` for metadata-only verification or `2` when partition sampling is enabled.
+- `walg_backup_verify_decrypt_canary{backup_name, crypter}`: Whether the key configured on the exporter host can actually open the backup (1 = yes, 0 = no, -1 = not checked). `-1` is deliberately distinct from `0` so that "never verified" does not read as "verified and broken".
+- `walg_backup_verify_missing_parts{backup_name}`: Number of tar partitions the manifest references but storage does not have.
+- `walg_backup_checksum_coverage_ratio{backup_name}`: Fraction of files in the backup carrying a stored SHA256 checksum (0-1). Backups taken before checksum support report a low ratio and can only be verified for readability.
+- `walg_backup_verify_timestamp{backup_name}`: Unix timestamp of the last completed verification.
+
+Because a failing backup makes `backup-verify` exit non-zero, the exporter reads
+its report from stdout regardless of exit status; a failed verification is
+published as `walg_backup_verify_status 0` rather than being dropped as a scrape
+error.
+
 ### Storage Metrics
 
 - `walg_storage_up`: Storage connectivity status (1 = up, 0 = down)
@@ -55,6 +70,7 @@ The exporter provides the following metrics:
 
 - `walg_backup_list_duration_seconds` - Time taken to execute 'backup-list' during the last collector run
 - `walg_wal_verify_duration_seconds` - Time taken to execute 'wal-verify' during the last collector run
+- `walg_backup_verify_duration_seconds` - Time taken to execute 'backup-verify' during the last collector run
 - `walg_scrape_errors_total` - Total number of scrape errors
 
 ## Backup Type Detection
@@ -86,6 +102,10 @@ go build -o walg-exporter .
 
 - `-backup-list.scrape-interval` duration  
     Interval between backup-list scrapes. (default 1m0s)
+- `-backup-verify.scrape-interval` duration  
+    Interval between backup-verify scrapes. (default 15m0s)
+- `-backup-verify.sample-percent` int  
+    Percentage of tar partitions `backup-verify` downloads (Tier 2). `0` keeps scrapes on metadata-only Tier 1. (default 0)
 - `-storage-check.scrape-interval` duration  
     Interval between storage scrapes. (default 30s)
 - `-wal-verify.scrape-interval` duration  
@@ -128,6 +148,7 @@ The exporter executes the following WAL-G commands:
 
 - `wal-g backup-list --detail --json`: Lists currently available backups in storage.
 - `wal-g wal-verify integrity timeline --json`: Checks to ensure that WAL segment storage is healthy.
+- `wal-g backup-verify --format json`: Verifies the latest backup. Add `-backup-verify.sample-percent` to promote this to Tier 2, which downloads and re-checksums a sample of partitions.
 - `wal-g st check read`: Check storage connectivity.
 
 ## Prometheus Configuration
@@ -187,6 +208,26 @@ walg_storage_up
 
 # Storage latency
 walg_storage_latency_seconds
+```
+
+### Backup Verification
+
+```promql
+# The latest backup failed verification
+walg_backup_verify_status == 0
+
+# The key on this host cannot open the backup - a restore would fail today.
+# Excludes -1, which means the canary never ran.
+walg_backup_verify_decrypt_canary == 0
+
+# No backup has been verified in over a day
+time() - max(walg_backup_verify_timestamp) > 86400
+
+# Partitions referenced by the manifest are absent from storage
+walg_backup_verify_missing_parts > 0
+
+# Backup predates checksum support, so only readability can be verified
+walg_backup_checksum_coverage_ratio < 1
 ```
 
 ## Timestamp Semantics

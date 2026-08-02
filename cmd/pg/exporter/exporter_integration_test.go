@@ -1,3 +1,7 @@
+// This suite drives a real exporter process against a bash mock and kills it by
+// Unix process group, so it is constrained to platforms that support both.
+//go:build linux || darwin
+
 package main
 
 import (
@@ -12,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -55,6 +60,7 @@ func runExporter(t *testing.T, mockWalgPath string) func() {
 		"-backup-list.scrape-interval", "2s", // Fast interval for testing
 		"-wal-verify.scrape-interval", "2s",
 		"-storage-check.scrape-interval", "2s",
+		"-backup-verify.scrape-interval", "2s",
 	}
 
 	cmd := exec.CommandContext(ctx, exporterBinary, args...)
@@ -153,6 +159,82 @@ func TestBackupMetricsIntegration(t *testing.T) {
 			require.Equal(t, "base_000000430000038500000003", deltaOrigin, "Incorrect delta_origin for delta backup")
 		}
 	}
+}
+
+// gaugeValue returns the value of the first sample in family whose labels include
+// every pair in want.
+func gaugeValue(t *testing.T, families map[string]*dto.MetricFamily, name string, want map[string]string) float64 {
+	t.Helper()
+
+	family := families[name]
+	require.NotNil(t, family, "metric %s not exported", name)
+
+	for _, m := range family.GetMetric() {
+		labels := make(map[string]string, len(m.GetLabel()))
+		for _, l := range m.GetLabel() {
+			labels[l.GetName()] = l.GetValue()
+		}
+
+		matched := true
+		for k, v := range want {
+			if labels[k] != v {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return m.GetGauge().GetValue()
+		}
+	}
+
+	t.Fatalf("metric %s has no sample with labels %v", name, want)
+	return 0
+}
+
+func TestBackupVerifyMetricsIntegration(t *testing.T) {
+	cancel := runExporter(t, "./mock-wal-g.sh")
+	defer cancel()
+
+	resp, err := http.Get("http://" + listenAddress + "/metrics")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	parser := expfmt.NewTextParser(model.LegacyValidation)
+	metricFamilies, err := parser.TextToMetricFamilies(strings.NewReader(string(body)))
+	require.NoError(t, err)
+
+	const backupName = "base_000000430000038500000003"
+
+	// The mock exits non-zero because the backup fails verification. The report on
+	// stdout still has to reach Prometheus - that is the whole point of the metric.
+	require.Equal(t, 0.0,
+		gaugeValue(t, metricFamilies, "walg_backup_verify_status",
+			map[string]string{"backup_name": backupName, "tier": "1"}),
+		"expected a failing backup to report status 0")
+
+	require.Equal(t, 0.0,
+		gaugeValue(t, metricFamilies, "walg_backup_verify_decrypt_canary",
+			map[string]string{"backup_name": backupName, "crypter": "libsodium"}),
+		"expected the decrypt canary to report failure (0)")
+
+	require.Equal(t, 2.0,
+		gaugeValue(t, metricFamilies, "walg_backup_verify_missing_parts",
+			map[string]string{"backup_name": backupName}),
+		"expected 2 missing tar partitions")
+
+	require.InDelta(t, 0.75,
+		gaugeValue(t, metricFamilies, "walg_backup_checksum_coverage_ratio",
+			map[string]string{"backup_name": backupName}),
+		0.0001, "expected checksum coverage of 3/4")
+
+	require.Positive(t,
+		gaugeValue(t, metricFamilies, "walg_backup_verify_timestamp",
+			map[string]string{"backup_name": backupName}),
+		"expected a verification timestamp to be recorded")
 }
 
 func TestWalVerifyMetricsIntegration(t *testing.T) {

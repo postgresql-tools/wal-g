@@ -1,0 +1,33 @@
+{
+  "backup_name": "base_000000430000038500000003",
+  "tier": "1",
+  "pass": false,
+  "sentinel_exists": true,
+  "files_metadata_exists": true,
+  "missing_parts": [
+    "part_017.tar.br",
+    "part_042.tar.br"
+  ],
+  "deploy_metadata": {
+    "git_commit": "abc123def",
+    "git_branch": "main",
+    "deploy_id": "deploy-2026-07-14-01"
+  },
+  "checksum_coverage": {
+    "has_checksum": 3,
+    "no_checksum": 1,
+    "total": 4
+  },
+  "decrypt_canary": {
+    "attempted": true,
+    "pass": false,
+    "part": "part_003.tar.br",
+    "part_size": 4194304,
+    "crypter": "libsodium",
+    "tar_entries": 0,
+    "error": "failed to decrypt/decompress part_003.tar.br: incorrect key"
+  },
+  "wal_check_available": true,
+  "wal_check_details": "no gaps found",
+  "elapsed": "1.204s"
+}
