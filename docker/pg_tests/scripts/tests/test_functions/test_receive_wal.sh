@@ -9,6 +9,19 @@ test_receive_wal()
 
   wal-g --config=${TMP_CONFIG} wal-receive &
 
+  # Wait for the replication slot to be created before generating WAL,
+  # otherwise wal-receive may start streaming from a later segment and
+  # never upload the first one, failing wal-verify integrity.
+  SLOT_WAIT_ATTEMPTS=150
+  until psql -tAc "SELECT 1 FROM pg_replication_slots WHERE slot_name='walg'" | grep -q 1; do
+    SLOT_WAIT_ATTEMPTS=$((SLOT_WAIT_ATTEMPTS - 1))
+    if [ "${SLOT_WAIT_ATTEMPTS}" -eq 0 ]; then
+      echo "Replication slot 'walg' was not created in time"
+      return 1
+    fi
+    sleep 0.2
+  done
+
   pgbench -i -s 5 postgres
   pg_dumpall -f /tmp/dump1
   pgbench -c 2 -T 10 -S
