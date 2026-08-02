@@ -3,7 +3,7 @@
 export GOEXPERIMENT=jsonv2
 
 MAIN_PG_PATH := main/pg
-DOCKER_COMMON := golang ubuntu ubuntu_22_04 ubuntu_24_04 s3
+DOCKER_COMMON := golang ubuntu ubuntu_22_04 s3
 CMD_FILES = $(wildcard cmd/**/*.go)
 PKG_FILES = $(wildcard internal/*.go internal/**/*.go internal/**/**/*.go internal/**/**/**/*.go)
 TEST_FILES = $(wildcard test/*.go testtools/*.go)
@@ -138,15 +138,13 @@ pg17_build_image: pull_external_images
 	docker compose build pg17
 	docker compose build pg17_tests_template
 
-pg19_build_image: pull_external_images
-	docker compose build $(DOCKER_COMMON)
-	docker compose build pg19
-	docker compose build pg19_tests_template
-
-pg_save_image: install_and_build_pg pg10_build_image pg15_build_image pg16_build_image pg17_build_image pg18_build_image pg19_build_image
+pg_save_image: install_and_build_pg pg10_build_image pg15_build_image pg16_build_image pg17_build_image pg18_build_image
 	mkdir -p ${CACHE_FOLDER}
 	sudo rm -rf ${CACHE_FOLDER}/*
 	docker save ${IMAGE_PG10_TESTS} > ${CACHE_FILE_PG10_TESTS}
+	docker save ${IMAGE_PG15_TESTS} > ${CACHE_FILE_PG15_TESTS}
+	docker save ${IMAGE_PG16_TESTS} > ${CACHE_FILE_PG16_TESTS}
+	docker save ${IMAGE_PG17_TESTS} > ${CACHE_FILE_PG17_TESTS}
 	docker save ${IMAGE_PG18_TESTS} > ${CACHE_FILE_PG18_TESTS}
 	docker save wal-g/ubuntu:18.04 > ${CACHE_FILE_UBUNTU_18_04}
 	docker save wal-g/ubuntu:22.04 > ${CACHE_FILE_UBUNTU_22_04}
@@ -217,13 +215,6 @@ pg_integration_test: clean_compose pull_external_images
 			docker load -i ${CACHE_FILE_PG17_TESTS} && rm ${CACHE_FILE_PG17_TESTS};\
 		else\
 			make pg17_build_image;\
-		fi;\
-	fi
-	@if echo "$(TEST)" | grep -Fqe "pg19"; then\
-		if [ -f ${CACHE_FILE_PG19_TESTS} ]; then\
-			docker load -i ${CACHE_FILE_PG19_TESTS} && rm ${CACHE_FILE_PG19_TESTS};\
-		else\
-			make pg19_build_image;\
 		fi;\
 	fi
 	@if echo "$(TEST)" | grep -Fqe "pgbackrest"; then\

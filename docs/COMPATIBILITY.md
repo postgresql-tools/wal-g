@@ -13,11 +13,14 @@ supported by the [PostgreSQL Global Development Group (PGDG)](https://www.postgr
 | PG 16   | Supported       | General support until Nov 2027         |
 | PG 17   | Supported       | General support until Nov 2028         |
 | PG 18   | Supported       | Current stable release                 |
-| PG 19   | Supported       | Next major release                     |
 
 **Note:** PostgreSQL 10 was previously included in CI but has been removed because it reached
 end-of-life in November 2024. Testing against an EOL version does not validate compatibility
 for production deployments on supported PostgreSQL releases.
+
+**Note:** PostgreSQL 19 is not yet included in CI. It has not been released by the PostgreSQL
+Global Development Group (expected September 2026), so no `postgresql-19` packages are
+available from PGDG yet. CI coverage for PG 19 will be added once it is released.
 
 ## Test Coverage
 
@@ -61,7 +64,6 @@ make pg15_build_image    # Build PG 15 base + test images
 make pg16_build_image    # Build PG 16 base + test images
 make pg17_build_image    # Build PG 17 base + test images
 make pg18_build_image    # Build PG 18 base + test images
-make pg19_build_image    # Build PG 19 base + test images
 ```
 
 ### Running Tests Locally
@@ -71,13 +73,13 @@ make pg19_build_image    # Build PG 19 base + test images
 make TEST="pg15_full_backup_test" pg_integration_test
 make TEST="pg16_remote_backup_test" pg_integration_test
 make TEST="pg17_delete_retain_full_test" pg_integration_test
-make TEST="pg19_backup_verify_test" pg_integration_test
+make TEST="pg18_full_backup_test" pg_integration_test
 
 # Run all tests for a version
 make TEST="pg15_tests" pg_integration_test
 make TEST="pg16_tests" pg_integration_test
 make TEST="pg17_tests" pg_integration_test
-make TEST="pg19_tests" pg_integration_test
+make TEST="pg18_tests" pg_integration_test
 ```
 
 ## Object Storage
@@ -111,7 +113,7 @@ See the [CI pipeline](https://github.com/postgresql-tools/wal-g/actions) for liv
 
 ### Between Versions
 
-Backups produced by this fork on PG 10 can be restored on PG 15-19 and vice versa, subject
+Backups produced by this fork on PG 10 can be restored on PG 15-18 and vice versa, subject
 to PostgreSQL's standard backward-compatibility guarantees. Major version upgrades may require
 additional steps (e.g., `pg_upgrade`) beyond what WAL-G handles.
 
