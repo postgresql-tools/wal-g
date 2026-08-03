@@ -101,6 +101,10 @@ type CurBackupInfo struct {
 
 	incrementCount int
 
+	// deltaPromotionReason is set when this backup could have been a delta and
+	// was taken as a full backup instead.
+	deltaPromotionReason DeltaPromotionReason
+
 	StartChkpNum *uint32
 }
 
@@ -618,11 +622,21 @@ func (bh *BackupHandler) handleBackupPushLocal(ctx context.Context) {
 	} else {
 		var err error
 
-		bh.prevBackupInfo, bh.CurBackupInfo.incrementCount, err = bh.Arguments.deltaConfigurator.Configure(
+		var decision DeltaDecision
+
+		bh.prevBackupInfo, decision, err = bh.Arguments.deltaConfigurator.Configure(
 
 			folder, bh.Arguments.isPermanent)
 
 		tracelog.ErrorLogger.FatalOnError(err)
+
+		bh.CurBackupInfo.incrementCount = decision.Depth
+
+		// Recorded on the full backup this promotion produces, so that "why is
+		// this a full backup?" is answerable later from the backup itself.
+		if decision.Promoted() {
+			bh.CurBackupInfo.deltaPromotionReason = decision.Reason
+		}
 	}
 
 	bh.createAndPushBackup(ctx)

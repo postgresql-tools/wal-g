@@ -52,6 +52,12 @@ type BackupSentinelDto struct {
 	BackupStartChkpNum *uint32 `json:"ChkpNum"`
 
 	IncrementFromChkpNum *uint32 `json:"DeltaChkpNum,omitempty"`
+
+	// DeltaPromotionReason is set on a full backup that could have been a delta,
+	// saying why it was not. Absent on deltas, and on full backups taken because
+	// deltas are switched off or because there was nothing to increment from.
+
+	DeltaPromotionReason *string `json:"DeltaPromotionReason,omitempty"`
 }
 
 func NewBackupSentinelDto(bh *BackupHandler, tbsSpec *TablespaceSpec) BackupSentinelDto {
@@ -79,6 +85,12 @@ func NewBackupSentinelDto(bh *BackupHandler, tbsSpec *TablespaceSpec) BackupSent
 		}
 
 		sentinel.IncrementCount = &bh.CurBackupInfo.incrementCount
+	}
+
+	if bh.CurBackupInfo.deltaPromotionReason != "" {
+		reason := string(bh.CurBackupInfo.deltaPromotionReason)
+
+		sentinel.DeltaPromotionReason = &reason
 	}
 
 	sentinel.BackupFinishLSN = &bh.CurBackupInfo.endLSN

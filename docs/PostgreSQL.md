@@ -58,6 +58,8 @@ Delta-backup is the difference between previously taken backup and present state
 Restoration process will automatically fetch all necessary deltas and base backup and compose valid restored backup (you still need WALs after start of last backup to restore consistent cluster).
 Delta computation is based on ModTime of file system and LSN number of pages in datafiles.
 
+Once the limit is reached, the next `backup-push` is **automatically promoted to a full backup**. This fork resolves the chain depth by **walking the increment chain in storage** rather than by trusting the delta count recorded in the base backup's sentinel — see [Delta chain depth and auto-promotion](#delta-chain-depth-and-auto-promotion).
+
 * `WALG_DELTA_ORIGIN`
 
 To configure base for next delta backup (only if `WALG_DELTA_MAX_STEPS` is not exceeded). `WALG_DELTA_ORIGIN` can be LATEST (chaining increments), LATEST_FULL (for bases where volatile part is compact and chaining has no meaning - deltas overwrite each other). Defaults to LATEST.
@@ -374,6 +376,39 @@ INFO: Selecting the backup with name base_000000010000000100000046_D_00000001000
 INFO: Delta will be made from full backup.
 INFO: Delta backup from base_000000010000000100000040 with LSN 140000060.
 ```
+
+#### Delta chain depth and auto-promotion
+
+When the chain reaches `WALG_DELTA_MAX_STEPS`, the next `backup-push` is taken as a full backup instead of another delta. That much is upstream behaviour. What this fork changes is **how the depth is established**.
+
+Upstream reads the delta count out of the base backup's sentinel and adds one. That count is written once and never revisited, so when it is missing or wrong — an older backup, a partially written sentinel, a backup copied in from another storage — counting restarts from one and the chain keeps growing silently past its limit. A restore then has to apply every link in a chain nobody knew was that long.
+
+This fork walks the increment chain in storage instead, following each link back to the full backup at its base. The walk costs one sentinel read per link, once per `backup-push`, and cannot drift from what is actually there. When the walked depth disagrees with the recorded count, the walked depth is what the limit is applied to, and the disagreement is logged:
+
+```
+WARNING: base_...17 records a delta count of 1 but sits 4 link(s) into a chain in storage.
+         Using the depth found in storage, so the limit is applied to the real chain.
+```
+
+Promotion to a full backup happens for these reasons, which are recorded on the resulting backup's sentinel as `DeltaPromotionReason`:
+
+| Reason | Meaning |
+| --- | --- |
+| `chain_at_max_depth` | The chain has reached `WALG_DELTA_MAX_STEPS` |
+| `chain_broken` | A backup the chain depends on is not in storage |
+| `chain_cycle` | The chain's links refer back to each other |
+| `chain_unreadable` | A link's sentinel could not be read, or names an increment base without the rest of its increment fields, so the true depth is unknown |
+| `base_is_permanent` | The base is a permanent backup, and a delta on it would pin it in place |
+| `base_without_lsn` | The base predates the delta feature and records no start LSN |
+
+The reason is written only when a delta was actually possible and was declined. Full backups taken because deltas are switched off, or because there is no previous backup, carry no reason — recording those would put a field on nearly every full backup and bury the cases worth auditing.
+
+Because a broken or unreadable chain promotes rather than extends, a corrupt link cannot be built on top of. That also keeps an inconsistent sentinel away from the increment-handling code, which panics on one.
+
+What the limit counts depends on `WALG_DELTA_ORIGIN`:
+
+- **LATEST** (default) chains each delta onto the previous one, so the chain deepens and a restore must apply every link. The depth walked from storage is what the limit bounds.
+- **LATEST_FULL** rebases every delta onto the full backup, so the chain is never deeper than one link and a walked depth could never reach the limit. There the limit bounds how many deltas accumulate on a single full backup — which is what keeps that full backup from getting arbitrarily stale — and that count comes from the base's own sentinel. The walk still applies: a broken or unreadable chain promotes in either mode.
 
 #### Page checksums verification
 To enable verification of the page checksums during the backup-push, use the `--verify` flag or set the `WALG_VERIFY_PAGE_CHECKSUMS` env variable. If found any, corrupted block numbers (currently no more than 10 of them) will be recorded to the backup sentinel json, for example:
