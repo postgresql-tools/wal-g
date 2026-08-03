@@ -278,3 +278,37 @@ Objectives can be set as `WALG_RPO`, `WALG_RETENTION_WINDOW` and
 `WALG_RETENTION_COUNT` so a cron job and a CI gate are judged against the same
 numbers. Exit code 1 when any check fails. Full documentation:
 [PostgreSQL.md](PostgreSQL.md#retention-validate).
+
+## Rehearsing the restore: `restore-test`
+
+Everything above reads metadata. `backup-verify` samples the objects,
+`retention-validate` reasons about windows, `doctor` checks the host. None of
+them restore anything, and a backup that has never been restored is a backup
+nobody has tested.
+
+```bash
+wal-g restore-test --target-dir /mnt/drill --rto 2h --rpo 1h
+```
+
+The drill restores a backup for real into a scratch directory, times it, judges
+the elapsed time against the declared RTO and the reachable recovery point
+against the RPO, and then removes what it created.
+
+By default it measures the fetch only, and says so — an RTO pass that silently
+omitted WAL replay would be exactly the kind of false assurance this fork tries
+not to give. `--start-postgres` starts the restored cluster on a scratch port,
+replays to consistency, and folds that into the measured time.
+
+The safety rules are absolute: never `PGDATA` or anything inside it, never a
+directory that already has files in it, and clean up afterwards unless `--keep`
+says otherwise.
+
+### Recommended cadence
+
+- Monthly, or after any change to compression, encryption or storage layout.
+- From cron with `--format json`, so a drill that stops passing is noticed
+  before the day it matters.
+- With `--start-postgres` at least occasionally, since replay time is the part
+  of an RTO that fetch throughput cannot predict.
+
+Full documentation: [PostgreSQL.md](PostgreSQL.md#restore-test).

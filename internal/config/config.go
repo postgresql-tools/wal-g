@@ -201,6 +201,10 @@ const (
 
 	RPOSetting = "WALG_RPO"
 
+	// RTOSetting is the recovery time budget a restore drill is judged against.
+
+	RTOSetting = "WALG_RTO"
+
 	// RetentionWindowSetting is how far back a restore must remain possible.
 
 	RetentionWindowSetting = "WALG_RETENTION_WINDOW"
@@ -941,6 +945,8 @@ var (
 		PgStopBackupTimeout: true,
 
 		RPOSetting: true,
+
+		RTOSetting: true,
 
 		RetentionWindowSetting: true,
 
