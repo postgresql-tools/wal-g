@@ -58,6 +58,10 @@ Delta-backup is the difference between previously taken backup and present state
 Restoration process will automatically fetch all necessary deltas and base backup and compose valid restored backup (you still need WALs after start of last backup to restore consistent cluster).
 Delta computation is based on ModTime of file system and LSN number of pages in datafiles.
 
+* `WALG_RPO`, `WALG_RETENTION_WINDOW`, `WALG_RETENTION_COUNT`
+
+The recovery objectives `wal-g retention-validate` judges the retention policy against: the most recent data loss tolerated, how far back a restore must remain possible, and the backup count the policy keeps. Durations accept a `d` suffix for days. See [retention-validate](#retention-validate).
+
 * `WALG_DELTA_ORIGIN`
 
 To configure base for next delta backup (only if `WALG_DELTA_MAX_STEPS` is not exceeded). `WALG_DELTA_ORIGIN` can be LATEST (chaining increments), LATEST_FULL (for bases where volatile part is compact and chaining has no meaning - deltas overwrite each other). Defaults to LATEST.
@@ -703,6 +707,59 @@ The exit code is 1 when nothing is restorable, or when ``--min-window`` is set a
 
 ```bash
 wal-g pitr-window --min-window 72h || alert "PITR window under 3 days"
+```
+
+### ``retention-validate``
+
+Checks that the retention policy you run actually delivers the recovery objectives you claim.
+
+```bash
+wal-g retention-validate --rpo 1h --retention-window 30d --retain 36
+```
+
+Two questions are asked, and they fail independently:
+
+- Does storage meet the objectives **right now**?
+- Would it still meet them **once the declared retention policy has been applied**?
+
+A storage that passes the first and fails the second is the case this command exists for. It looks healthy only because the policy has not caught up with it yet — the backups that satisfy the window today are the ones tonight's `delete retain` is about to remove.
+
+The second question is answered by running the declared policy through the **same delete handler `delete retain` uses**, with deletion swapped for collection. What is validated is the delete that would actually happen, not a model of it. Nothing is deleted.
+
+```
+wal-g retention-validate
+
+Declared  RPO 1d0h, retention window 2d0h, retain 1
+
+[ OK ] rpo              1h13m of data at risk, within the 1d0h RPO
+       newest restorable point is 2026-08-03T14:21:51Z, 1h13m ago
+[ OK ] retention-window Storage is continuously restorable back to 2026-08-01T00:05:00Z, covering the 2d0h required
+[FAIL] policy-outcome   after `delete retain 1`, storage reaches back to 2026-08-02T00:05:00Z, 8h29m short of the 2d0h required
+       a restore to any point before 2026-08-02T00:05:00Z is not possible
+       -> Retaining 1 backup(s) does not sustain the declared window. Raise the retain count, or lower the declared window to what the policy can keep.
+[WARN] backup-cadence   retaining 1 backup(s) leaves no window at all between backups
+       -> Retain at least two backups so a window exists between the oldest and newest.
+
+2 passed, 1 warned, 1 failed, 0 skipped
+Objectives NOT met: 1 check(s) failed.
+```
+
+| Check | What it asks |
+| --- | --- |
+| `rpo` | How much data a failure right now would lose: the distance from the newest restorable point to now. Catches stalled WAL archiving. |
+| `retention-window` | Whether the required period is **continuously** restorable. A total of recoverable hours is not enough — the same total can be one window or several with holes between them, and only one of those is a retention window. |
+| `policy-outcome` | Whether it still would be after the policy runs. |
+| `backup-cadence` | Whether the policy can **keep** meeting the window at the observed backup cadence, rather than only today. Retaining N backups holds a window about (N−1) intervals wide; if that is short of the declared window, the policy is guaranteed to fail eventually even while storage currently passes. |
+
+The window checks end at the newest restorable point rather than at now, because the distance from there to now is what `rpo` measures. Judging it twice would report one problem as two. Gaps older than the declared window are ignored — they are real, and `pitr-window` reports them, but they are not this policy's problem.
+
+Objectives may be declared as flags or as settings (`WALG_RPO`, `WALG_RETENTION_WINDOW`, `WALG_RETENTION_COUNT`), so a cron job and a CI gate can be judged against the same numbers. An objective that is not declared is **skipped, not passed** — and a report where everything was skipped says so rather than claiming the objectives were met.
+
+The exit code is 0 when nothing failed and 1 otherwise; warnings do not affect it.
+
+```bash
+# Fails the build if the policy cannot deliver what it claims
+wal-g retention-validate --rpo 1h --retention-window 30d --retain 36 --format json
 ```
 
 ### ``delete garbage``
