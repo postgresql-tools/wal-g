@@ -251,3 +251,30 @@ Before changing a retention policy, `wal-g delete ... --explain` reports the sam
 window computed before and after the delete, and warns when the delete would
 leave nothing restorable, open a gap, or strand backups in storage. Full
 documentation for both: [PostgreSQL.md](PostgreSQL.md#pitr-window).
+
+## Does the policy deliver the RPO? `retention-validate`
+
+`pitr-window` reports what the storage can recover to. It does not know what you
+promised. `retention-validate` takes the objectives you declare — an RPO, a
+retention window, and the backup count your policy keeps — and checks both
+whether storage meets them now and whether it still would once the policy has
+run:
+
+```bash
+wal-g retention-validate --rpo 1h --retention-window 30d --retain 36
+```
+
+The second half is the point. A storage can satisfy a 30-day window today purely
+because backups nobody has pruned yet are still there; the policy that runs
+tonight is what decides whether it still will tomorrow. The declared policy is
+run through the same delete handler `delete retain` uses, so the window being
+validated is the one the real delete would leave. Nothing is deleted.
+
+The `backup-cadence` check goes one step further and asks whether the policy can
+*keep* meeting the window at the observed backup cadence, which fails on a
+misconfiguration before storage has had a chance to show it.
+
+Objectives can be set as `WALG_RPO`, `WALG_RETENTION_WINDOW` and
+`WALG_RETENTION_COUNT` so a cron job and a CI gate are judged against the same
+numbers. Exit code 1 when any check fails. Full documentation:
+[PostgreSQL.md](PostgreSQL.md#retention-validate).
