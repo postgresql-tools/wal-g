@@ -4,7 +4,6 @@ package internal
 
 import (
 	"fmt"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -109,6 +108,51 @@ func IsPermanentFunc(isPermanent func(storage.Object) bool) DeleteHandlerOption 
 	}
 }
 
+// DeletePlan is what a delete would remove, collected rather than deleted.
+type DeletePlan struct {
+	// Prefix is the storage path the objects were listed under. Object names are
+	// relative to it, so callers that reason about the storage as a whole - which
+	// backup is this, is this a WAL segment - need it to reconstruct the full
+	// path. "delete target" lists inside the base backup folder; everything else
+	// lists from the root.
+	Prefix string
+
+	Objects []storage.Object
+}
+
+// Names returns the object names relative to the storage root.
+func (p DeletePlan) Names() []string {
+	names := make([]string, 0, len(p.Objects))
+
+	for _, object := range p.Objects {
+		names = append(names, p.Prefix+object.GetName())
+	}
+
+	return names
+}
+
+// TotalSize is how many bytes the delete would reclaim.
+func (p DeletePlan) TotalSize() int64 {
+	var total int64
+
+	for _, object := range p.Objects {
+		total += object.GetSize()
+	}
+
+	return total
+}
+
+// CollectPlanFunc makes the handler hand what it would delete to sink instead of
+// deleting it. Routing every subcommand through the same collection point is
+// what lets --explain describe a "delete before", a "delete retain" and a
+// "delete garbage" without each growing its own dry-run path that could drift
+// from what the real delete does.
+func CollectPlanFunc(sink func(DeletePlan) error) DeleteHandlerOption {
+	return func(h *DeleteHandler) {
+		h.planSink = sink
+	}
+}
+
 func NewDeleteHandler(
 
 	folder storage.Folder,
@@ -153,6 +197,32 @@ type DeleteHandler struct {
 	greater func(object1, object2 storage.Object) bool
 
 	isPermanent func(object storage.Object) bool
+
+	// planSink, when set, receives what a delete would remove and nothing is
+	// deleted. See CollectPlanFunc.
+	planSink func(DeletePlan) error
+}
+
+// applyDelete either deletes the matching objects or, in plan mode, collects
+// them. Both paths run the same filters over the same listing, so an explained
+// delete and the delete it explains cannot disagree about what is in scope.
+func (h *DeleteHandler) applyDelete(
+	folder storage.Folder,
+	prefix string,
+	confirmed bool,
+	objFilter func(object storage.Object) bool,
+	folderFilter func(name string) bool,
+) error {
+	if h.planSink == nil {
+		return DeleteObjectsWhere(folder, confirmed, objFilter, folderFilter)
+	}
+
+	objects, err := CollectObjectsWhere(folder, objFilter, folderFilter)
+	if err != nil {
+		return err
+	}
+
+	return h.planSink(DeletePlan{Prefix: prefix, Objects: objects})
 }
 
 func (h *DeleteHandler) HandleDeleteBefore(args []string, confirmed bool) {
@@ -165,7 +235,10 @@ func (h *DeleteHandler) HandleDeleteBefore(args []string, confirmed bool) {
 	if target == nil {
 		tracelog.InfoLogger.Printf("No backup found for deletion")
 
-		os.Exit(0)
+		// Returning rather than exiting lets a caller that is explaining the
+		// delete still report an empty plan. The command has nothing left to do
+		// either way, so the exit code is unchanged.
+		return
 	}
 
 	err = h.DeleteBeforeTarget(target, confirmed)
@@ -187,7 +260,10 @@ func (h *DeleteHandler) HandleDeleteRetain(args []string, confirmed bool) {
 	if target == nil {
 		tracelog.InfoLogger.Printf("No backup found for deletion")
 
-		os.Exit(0)
+		// Returning rather than exiting lets a caller that is explaining the
+		// delete still report an empty plan. The command has nothing left to do
+		// either way, so the exit code is unchanged.
+		return
 	}
 
 	err = h.DeleteBeforeTarget(target, confirmed)
@@ -209,7 +285,10 @@ func (h *DeleteHandler) HandleDeleteRetainAfter(args []string, confirmed bool) {
 	if target == nil {
 		tracelog.InfoLogger.Printf("No backup found for deletion")
 
-		os.Exit(0)
+		// Returning rather than exiting lets a caller that is explaining the
+		// delete still report an empty plan. The command has nothing left to do
+		// either way, so the exit code is unchanged.
+		return
 	}
 
 	err = h.DeleteBeforeTarget(target, confirmed)
@@ -470,7 +549,7 @@ func (h *DeleteHandler) DeleteEverything(confirmed bool) {
 
 	folderFilter := func(path string) bool { return true }
 
-	err := DeleteObjectsWhere(h.Folder, confirmed, filter, folderFilter)
+	err := h.applyDelete(h.Folder, "", confirmed, filter, folderFilter)
 
 	tracelog.ErrorLogger.FatalOnError(err)
 }
@@ -502,7 +581,7 @@ func (h *DeleteHandler) DeleteBeforeTargetWhere(
 
 	tracelog.InfoLogger.Println("Start delete")
 
-	return DeleteObjectsWhere(h.Folder, confirmed, func(object storage.Object) bool {
+	return h.applyDelete(h.Folder, "", confirmed, func(object storage.Object) bool {
 		return objSelector(object) && h.less(object, target) && !h.isPermanent(object)
 	}, folderFilter)
 }
@@ -518,7 +597,7 @@ func (h *DeleteHandler) DeleteWhere(
 ) error {
 	tracelog.InfoLogger.Println("Start delete")
 
-	return DeleteObjectsWhere(h.Folder, confirmed, func(object storage.Object) bool {
+	return h.applyDelete(h.Folder, "", confirmed, func(object storage.Object) bool {
 		return objSelector(object) && !h.isPermanent(object)
 	}, folderFilter)
 }
@@ -550,7 +629,7 @@ func (h *DeleteHandler) DeleteTarget(target BackupObject, confirmed, findFull bo
 		backupNamesToDelete[bTarget.GetBackupName()] = true
 	}
 
-	return DeleteObjectsWhere(h.Folder.GetSubFolder(utility.BaseBackupPath),
+	return h.applyDelete(h.Folder.GetSubFolder(utility.BaseBackupPath), utility.BaseBackupPath,
 
 		confirmed, func(object storage.Object) bool {
 			return backupNamesToDelete[utility.StripLeftmostBackupName(object.GetName())] && !h.isPermanent(object)
@@ -639,17 +718,17 @@ func (h *DeleteHandler) findDependantBackups(target BackupObject) []BackupObject
 	return dependantBackups
 }
 
-func DeleteObjectsWhere(
+// CollectObjectsWhere returns the objects a delete with these filters would
+// remove, without removing them.
+func CollectObjectsWhere(
 
 	folder storage.Folder,
-
-	confirm bool,
 
 	objFilter func(object1 storage.Object) bool,
 
 	folderFilter func(name string) bool,
 
-) error {
+) ([]storage.Object, error) {
 	// if folder has uncurrent versions we need to clean them as well
 
 	storage.SetShowAllVersions(folder, true)
@@ -657,7 +736,7 @@ func DeleteObjectsWhere(
 	relativePathObjects, err := multistorage.ListFolderRecursivelyWithFilter(folder, folderFilter)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	markedForDeletion := make([]storage.Object, 0, len(relativePathObjects))
@@ -672,6 +751,26 @@ func DeleteObjectsWhere(
 		} else {
 			tracelog.DebugLogger.Printf("Object skipped: %s storage=%s\n", object.GetName(), multistorage.GetStorage(object))
 		}
+	}
+
+	return markedForDeletion, nil
+}
+
+func DeleteObjectsWhere(
+
+	folder storage.Folder,
+
+	confirm bool,
+
+	objFilter func(object1 storage.Object) bool,
+
+	folderFilter func(name string) bool,
+
+) error {
+	markedForDeletion, err := CollectObjectsWhere(folder, objFilter, folderFilter)
+
+	if err != nil {
+		return err
 	}
 
 	deletionCount := len(markedForDeletion)

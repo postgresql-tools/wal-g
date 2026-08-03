@@ -3,6 +3,10 @@
 package pg
 
 import (
+	"errors"
+	"os"
+	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/wal-g/tracelog"
 
@@ -27,6 +31,15 @@ const DeleteGarbageUse = "garbage [ARCHIVES|BACKUPS]"
 
 const afterFlag = "after"
 
+const explainFlag = "explain"
+
+const explainDescription = "Report what the delete would remove and what could still be recovered afterwards, " +
+	"without deleting anything."
+
+const deleteFormatFlag = "format"
+
+const deleteFormatDescription = "Output format for --explain: text or json. Default: text."
+
 var confirmed = false
 
 var deleteWithoutBackups = false
@@ -34,6 +47,10 @@ var deleteWithoutBackups = false
 var useSentinelTime = false
 
 var deleteTargetUserData = ""
+
+var deleteExplain = false
+
+var deleteFormat = "text"
 
 // deleteCmd represents the delete command
 
@@ -97,61 +114,90 @@ var deleteGarbageCmd = &cobra.Command{
 	Run: runDeleteGarbage,
 }
 
-func runDeleteBefore(cmd *cobra.Command, args []string) {
+// executeDelete builds the delete handler and runs one delete subcommand.
+//
+// In explain mode it wires a plan sink and writes the report afterwards, which
+// is what keeps --explain identical in scope to the delete it describes: the
+// same handler, the same arguments, the same filters, with deletion swapped for
+// collection at the last step.
+func executeDelete(
+	description string,
+	useSentinel bool,
+	run func(handler *postgres.DeleteHandler, permanentBackups map[postgres.PermanentObject]bool, confirm bool),
+) {
 	folder := configureFolder()
 
 	permanentBackups, permanentWals := postgres.GetPermanentBackupsAndWals(folder)
 
-	deleteHandler, err := postgres.NewDeleteHandler(folder, permanentBackups, permanentWals, useSentinelTime)
+	var explainer *postgres.DeleteExplainer
+
+	var options []internal.DeleteHandlerOption
+
+	if deleteExplain {
+		explainer = postgres.NewDeleteExplainer(folder, description)
+
+		options = append(options, internal.CollectPlanFunc(explainer.Collect))
+	}
+
+	deleteHandler, err := postgres.NewDeleteHandler(
+
+		folder, permanentBackups, permanentWals, useSentinel, options...)
 
 	tracelog.ErrorLogger.FatalOnError(err)
 
-	deleteHandler.HandleDeleteBefore(args, confirmed)
+	run(deleteHandler, permanentBackups, confirmed && !deleteExplain)
+
+	if explainer != nil {
+		tracelog.ErrorLogger.FatalOnError(explainer.ExplainOrLog(deleteFormat, os.Stdout))
+	}
+}
+
+func runDeleteBefore(cmd *cobra.Command, args []string) {
+	executeDelete("delete before "+strings.Join(args, " "), useSentinelTime,
+
+		func(handler *postgres.DeleteHandler, _ map[postgres.PermanentObject]bool, confirm bool) {
+			handler.HandleDeleteBefore(args, confirm)
+		})
 }
 
 func runDeleteRetain(cmd *cobra.Command, args []string) {
-	folder := configureFolder()
-
-	permanentBackups, permanentWals := postgres.GetPermanentBackupsAndWals(folder)
-
-	deleteHandler, err := postgres.NewDeleteHandler(folder, permanentBackups, permanentWals, useSentinelTime)
-
-	tracelog.ErrorLogger.FatalOnError(err)
-
 	afterValue, _ := cmd.Flags().GetString(afterFlag)
 
-	if afterValue == "" {
-		deleteHandler.HandleDeleteRetain(args, confirmed)
-	} else {
-		deleteHandler.HandleDeleteRetainAfter(append(args, afterValue), confirmed)
+	description := "delete retain " + strings.Join(args, " ")
+
+	if afterValue != "" {
+		description += " --after " + afterValue
 	}
+
+	executeDelete(description, useSentinelTime,
+
+		func(handler *postgres.DeleteHandler, _ map[postgres.PermanentObject]bool, confirm bool) {
+			if afterValue == "" {
+				handler.HandleDeleteRetain(args, confirm)
+			} else {
+				handler.HandleDeleteRetainAfter(append(args, afterValue), confirm)
+			}
+		})
 }
 
 func runDeleteEverything(cmd *cobra.Command, args []string) {
-	folder := configureFolder()
+	executeDelete("delete everything "+strings.Join(args, " "), useSentinelTime,
 
-	permanentBackups, permanentWals := postgres.GetPermanentBackupsAndWals(folder)
+		func(handler *postgres.DeleteHandler,
+			permanentBackups map[postgres.PermanentObject]bool, confirm bool) {
+			permanentBackupNames := make([]string, 0, len(permanentBackups))
 
-	deleteHandler, err := postgres.NewDeleteHandler(folder, permanentBackups, permanentWals, useSentinelTime)
+			for backup, isPerm := range permanentBackups {
+				if isPerm {
+					permanentBackupNames = append(permanentBackupNames, backup.Name)
+				}
+			}
 
-	tracelog.ErrorLogger.FatalOnError(err)
-
-	permanentBackupNames := make([]string, 0, len(permanentBackups))
-
-	for backup, isPerm := range permanentBackups {
-		if isPerm {
-			permanentBackupNames = append(permanentBackupNames, backup.Name)
-		}
-	}
-
-	deleteHandler.HandleDeleteEverything(args, permanentBackupNames, confirmed)
+			handler.HandleDeleteEverything(args, permanentBackupNames, confirm)
+		})
 }
 
 func runDeleteTarget(cmd *cobra.Command, args []string) {
-	folder := configureFolder()
-
-	permanentBackups, permanentWals := postgres.GetPermanentBackupsAndWals(folder)
-
 	findFullBackup := false
 
 	modifier := internal.ExtractDeleteTargetModifierFromArgs(args)
@@ -164,29 +210,27 @@ func runDeleteTarget(cmd *cobra.Command, args []string) {
 		args = args[1:]
 	}
 
-	deleteHandler, err := postgres.NewDeleteHandler(folder, permanentBackups, permanentWals, useSentinelTime)
+	executeDelete("delete target "+strings.Join(args, " "), useSentinelTime,
 
-	tracelog.ErrorLogger.FatalOnError(err)
+		func(handler *postgres.DeleteHandler, _ map[postgres.PermanentObject]bool, confirm bool) {
+			targetBackupSelector, err := internal.CreateTargetDeleteBackupSelector(
 
-	targetBackupSelector, err := internal.CreateTargetDeleteBackupSelector(cmd, args, deleteTargetUserData, postgres.NewGenericMetaFetcher())
+				cmd, args, deleteTargetUserData, postgres.NewGenericMetaFetcher())
 
-	tracelog.ErrorLogger.FatalOnError(err)
+			tracelog.ErrorLogger.FatalOnError(err)
 
-	deleteHandler.HandleDeleteTarget(targetBackupSelector, confirmed, findFullBackup)
+			handler.HandleDeleteTarget(targetBackupSelector, confirm, findFullBackup)
+		})
 }
 
 func runDeleteGarbage(cmd *cobra.Command, args []string) {
-	folder := configureFolder()
+	executeDelete("delete garbage "+strings.Join(args, " "), false,
 
-	permanentBackups, permanentWals := postgres.GetPermanentBackupsAndWals(folder)
+		func(handler *postgres.DeleteHandler, _ map[postgres.PermanentObject]bool, confirm bool) {
+			tracelog.ErrorLogger.FatalOnError(
 
-	deleteHandler, err := postgres.NewDeleteHandler(folder, permanentBackups, permanentWals, false)
-
-	tracelog.ErrorLogger.FatalOnError(err)
-
-	err = deleteHandler.HandleDeleteGarbage(args, confirmed, deleteWithoutBackups)
-
-	tracelog.ErrorLogger.FatalOnError(err)
+				handler.HandleDeleteGarbage(args, confirm, deleteWithoutBackups))
+		})
 }
 
 func configureFolder() storage.Folder {
@@ -225,4 +269,23 @@ func init() {
 	deleteCmd.PersistentFlags().BoolVar(&confirmed, internal.ConfirmFlag, false, "Confirms backup deletion")
 
 	deleteCmd.PersistentFlags().BoolVar(&useSentinelTime, UseSentinelTimeFlag, false, UseSentinelTimeDescription)
+
+	deleteCmd.PersistentFlags().BoolVar(&deleteExplain, explainFlag, false, explainDescription)
+
+	deleteCmd.PersistentFlags().StringVar(&deleteFormat, deleteFormatFlag, "text", deleteFormatDescription)
+
+	// --explain and --confirm ask for opposite things. Silently letting one win
+	// would mean either deleting when a preview was wanted, or not deleting when
+	// a delete was wanted, and only one of those is recoverable.
+	deleteCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if deleteExplain && confirmed {
+			return errors.New("--explain and --confirm cannot be combined: --explain never deletes anything")
+		}
+
+		if deleteFormat != "text" && deleteFormat != "json" {
+			return errors.New("--format must be either text or json")
+		}
+
+		return nil
+	}
 }
