@@ -21,5 +21,8 @@ func getFilesystemID(path string) (FilesystemID, error) {
 		return "", fmt.Errorf("failed to read device ID for %s", path)
 	}
 
-	return FilesystemID(fmt.Sprintf("dev:%d", uint64(stat.Dev))), nil
+	// Dev is not the same integer type across unix platforms - uint64 on Linux,
+	// int32 on darwin - so it is formatted rather than converted. The ID is only
+	// ever compared for equality, so any stable per-device rendering will do.
+	return FilesystemID(fmt.Sprintf("dev:%d", stat.Dev)), nil
 }
