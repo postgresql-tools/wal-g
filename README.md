@@ -26,6 +26,7 @@ This repository is a fork of the [original WAL-G project](https://github.com/wal
 
 - **`backup-verify`** — two-tier backup verification (Tier 1: sentinel integrity, manifest completeness, checksum coverage, decrypt canary; Tier 2: sampled tar-partition download) — [docs](docs/BACKUP-RECOVERY.md)
 - **`doctor`** — preflight checks for config resolution, storage read/write/delete, crypter round-trip, PostgreSQL connectivity, WAL archiving, backup freshness, and free space vs. restore size — [docs](docs/BACKUP-RECOVERY.md#preflight-checks-with-doctor)
+- **Delta-chain depth limits** — `WALG_DELTA_MAX_STEPS` is enforced against the chain depth *walked from storage* rather than the count recorded in a sentinel, so a missing or stale count can no longer let a chain grow past its limit unnoticed; promotion to a full backup records why on the resulting backup — [docs](docs/PostgreSQL.md#delta-chain-depth-and-auto-promotion)
 - **Deployment metadata** — `--git-commit`, `--git-branch`, `--deploy-id` flags recorded in backup metadata (`cmd/pg/backup_push.go`)
 - **Checksum inventory** — per-file SHA256 checksums stored at backup time and reported by `backup-verify`
 - **Characterization tests** — golden-file regression detection ([`internal/characterization`](internal/characterization), [`pkg/storages/postgres/characterization_test.go`](pkg/storages/postgres/characterization_test.go))
