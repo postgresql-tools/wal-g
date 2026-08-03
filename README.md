@@ -26,6 +26,8 @@ This repository is a fork of the [original WAL-G project](https://github.com/wal
 
 - **`backup-verify`** — two-tier backup verification (Tier 1: sentinel integrity, manifest completeness, checksum coverage, decrypt canary; Tier 2: sampled tar-partition download) — [docs](docs/BACKUP-RECOVERY.md)
 - **`doctor`** — preflight checks for config resolution, storage read/write/delete, crypter round-trip, PostgreSQL connectivity, WAL archiving, backup freshness, and free space vs. restore size — [docs](docs/BACKUP-RECOVERY.md#preflight-checks-with-doctor)
+- **`pitr-window`** — reports the ranges of time the storage can actually be restored to, the gaps between them, and which backups can no longer serve a restore; `--min-window` makes it a CI gate against a retention policy that has stopped covering its RPO — [docs](docs/PostgreSQL.md#pitr-window)
+- **`delete --explain`** — on every `delete` subcommand: what the delete would remove *and* the recovery window before and after it, with warnings for deletes that leave nothing restorable, open a gap, or strand backups in storage that can no longer be restored — [docs](docs/PostgreSQL.md#delete---explain)
 - **Deployment metadata** — `--git-commit`, `--git-branch`, `--deploy-id` flags recorded in backup metadata (`cmd/pg/backup_push.go`)
 - **Checksum inventory** — per-file SHA256 checksums stored at backup time and reported by `backup-verify`
 - **Characterization tests** — golden-file regression detection ([`internal/characterization`](internal/characterization), [`pkg/storages/postgres/characterization_test.go`](pkg/storages/postgres/characterization_test.go))

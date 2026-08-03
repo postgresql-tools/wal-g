@@ -29,6 +29,8 @@ func NewDeleteHandler(folder storage.Folder, permanentBackups, permanentWals map
 
 	useSentinelTime bool,
 
+	options ...internal.DeleteHandlerOption,
+
 ) (*DeleteHandler, error) {
 	backupSentinels, err := internal.GetBackupSentinelObjects(folder)
 
@@ -64,6 +66,14 @@ func NewDeleteHandler(folder storage.Folder, permanentBackups, permanentWals map
 		return nil, err
 	}
 
+	handlerOptions := append(
+
+		[]internal.DeleteHandlerOption{
+
+			internal.IsPermanentFunc(makePermanentFunc(permanentBackups, permanentWals))},
+
+		options...)
+
 	deleteHandler :=
 
 		&DeleteHandler{
@@ -75,9 +85,7 @@ func NewDeleteHandler(folder storage.Folder, permanentBackups, permanentWals map
 
 				lessFunc,
 
-				internal.IsPermanentFunc(
-
-					makePermanentFunc(permanentBackups, permanentWals))),
+				handlerOptions...),
 		}
 
 	return deleteHandler, nil
