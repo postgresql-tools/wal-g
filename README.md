@@ -24,12 +24,20 @@ This repository is a fork of the [original WAL-G project](https://github.com/wal
 
 ## Fork additions
 
+Together these answer one question that upstream leaves to guesswork: *can this
+backup be restored, how far back, how fast, and will the retention policy still
+allow it tomorrow.* Each reports what it verified and declines to claim what it
+did not.
+
 - **`backup-verify`** — two-tier backup verification (Tier 1: sentinel integrity, manifest completeness, checksum coverage, decrypt canary; Tier 2: sampled tar-partition download) — [docs](docs/BACKUP-RECOVERY.md)
 - **`doctor`** — preflight checks for config resolution, storage read/write/delete, crypter round-trip, PostgreSQL connectivity, WAL archiving, backup freshness, and free space vs. restore size — [docs](docs/BACKUP-RECOVERY.md#preflight-checks-with-doctor)
 - **`pitr-window`** — reports the ranges of time the storage can actually be restored to, the gaps between them, and which backups can no longer serve a restore; `--min-window` makes it a CI gate against a retention policy that has stopped covering its RPO — [docs](docs/PostgreSQL.md#pitr-window)
-- **`restore-test`** — restores a backup into a scratch directory for real, times it, and judges it against declared RTO/RPO; refuses to touch `PGDATA` or any non-empty directory, and cleans up after itself. Optionally starts the restored cluster to measure WAL replay — [docs](docs/PostgreSQL.md#restore-test)
-- **`retention-validate`** — checks that the retention policy you run delivers the RPO and retention window you declare, by running the real policy through the real delete handler and validating the window it would leave; catches the policy that passes today only because it has not been applied yet — [docs](docs/PostgreSQL.md#retention-validate)
 - **`delete --explain`** — on every `delete` subcommand: what the delete would remove *and* the recovery window before and after it, with warnings for deletes that leave nothing restorable, open a gap, or strand backups in storage that can no longer be restored — [docs](docs/PostgreSQL.md#delete---explain)
+- **`retention-validate`** — checks that the retention policy you run delivers the RPO and retention window you declare, by running the real policy through the real delete handler and validating the window it would leave; catches the policy that passes today only because it has not been applied yet — [docs](docs/PostgreSQL.md#retention-validate)
+- **`restore-test`** — restores a backup into a scratch directory for real, times it, and judges it against declared RTO/RPO; refuses to touch `PGDATA` or any non-empty directory, and cleans up after itself. Optionally starts the restored cluster to measure WAL replay — [docs](docs/PostgreSQL.md#restore-test)
+- **Free-space preflight** — `backup-fetch` sizes a restore against the free space available to it and refuses one that demonstrably will not fit, instead of failing hours in with a half-written data directory — [docs](docs/PostgreSQL.md#free-space-preflight)
+- **Delta-chain depth limits** — `WALG_DELTA_MAX_STEPS` is enforced against the chain depth *walked from storage* rather than the count recorded in a sentinel, so a missing or stale count can no longer let a chain grow past its limit unnoticed; promotion to a full backup records why on the resulting backup — [docs](docs/PostgreSQL.md#delta-chain-depth-and-auto-promotion)
+- **Recovery objectives as config** — `WALG_RPO`, `WALG_RTO`, `WALG_RETENTION_WINDOW` and `WALG_RETENTION_COUNT`, so a cron job and a CI gate are judged against the same numbers — [docs](docs/PostgreSQL.md#configuration)
 - **Deployment metadata** — `--git-commit`, `--git-branch`, `--deploy-id` flags recorded in backup metadata (`cmd/pg/backup_push.go`)
 - **Checksum inventory** — per-file SHA256 checksums stored at backup time and reported by `backup-verify`
 - **Characterization tests** — golden-file regression detection ([`internal/characterization`](internal/characterization), [`pkg/storages/postgres/characterization_test.go`](pkg/storages/postgres/characterization_test.go))

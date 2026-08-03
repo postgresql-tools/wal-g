@@ -60,6 +60,10 @@ Delta computation is based on ModTime of file system and LSN number of pages in 
 
 Once the limit is reached, the next `backup-push` is **automatically promoted to a full backup**. This fork resolves the chain depth by **walking the increment chain in storage** rather than by trusting the delta count recorded in the base backup's sentinel — see [Delta chain depth and auto-promotion](#delta-chain-depth-and-auto-promotion).
 
+* `WALG_RPO`, `WALG_RTO`, `WALG_RETENTION_WINDOW`, `WALG_RETENTION_COUNT`
+
+The recovery objectives this fork judges against: the most recent data loss tolerated (`WALG_RPO`), the recovery time budget (`WALG_RTO`), how far back a restore must remain possible (`WALG_RETENTION_WINDOW`), and the backup count the retention policy keeps (`WALG_RETENTION_COUNT`). Durations accept a `d` suffix for days, so a 30-day window is `30d` rather than `720h`. Used by [retention-validate](#retention-validate) and [restore-test](#restore-test).
+
 * `WALG_DELTA_ORIGIN`
 
 To configure base for next delta backup (only if `WALG_DELTA_MAX_STEPS` is not exceeded). `WALG_DELTA_ORIGIN` can be LATEST (chaining increments), LATEST_FULL (for bases where volatile part is compact and chaining has no meaning - deltas overwrite each other). Defaults to LATEST.
