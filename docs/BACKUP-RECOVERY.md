@@ -220,3 +220,34 @@ wal-g doctor --data-dir /mnt/restore-target
 # Machine-readable, for a monitoring pipeline
 wal-g doctor --format json
 ```
+
+## How far back can I recover? `pitr-window`
+
+`backup-verify` answers whether a backup is intact and `doctor` answers whether
+this host could use it. Neither answers the question a retention policy is
+actually judged by: **which moments in time can still be restored to.**
+
+```bash
+wal-g pitr-window
+```
+
+A restore needs a backup that can reach a consistent state and an unbroken run
+of WAL from it, so a window opens when a backup *finishes* and runs until the
+first missing WAL segment after it. Overlapping windows merge; what is left
+between them is a gap — a stretch of history nothing in storage can recover to.
+Backups that can no longer serve a restore at all, because their base is gone or
+their WAL is missing, are listed separately: they still cost storage and still
+appear in `backup-list`.
+
+The exit code is 1 when nothing is restorable, or when the recoverable span is
+shorter than `--min-window`, which makes it a gate on the RPO you claim to meet:
+
+```bash
+# Fails if less than three days of history remains recoverable
+wal-g pitr-window --min-window 72h
+```
+
+Before changing a retention policy, `wal-g delete ... --explain` reports the same
+window computed before and after the delete, and warns when the delete would
+leave nothing restorable, open a gap, or strand backups in storage. Full
+documentation for both: [PostgreSQL.md](PostgreSQL.md#pitr-window).

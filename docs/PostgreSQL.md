@@ -619,6 +619,92 @@ Use the ``--use-sentinel-time`` flag on ``wal-g delete`` so WAL-G orders backups
 wal-g delete retain FULL 5 --use-sentinel-time --confirm
 ```
 
+### ``delete --explain``
+
+Every ``delete`` subcommand accepts ``--explain``. It reports what the delete would remove **and what could still be recovered afterwards**, then exits without deleting anything.
+
+Running ``delete`` without ``--confirm`` already tells you how many objects match. That number does not answer the question that actually matters before a retention change: *how far back will I still be able to restore?* ``--explain`` answers it by computing the recovery window twice — once against storage as it stands, once against storage with the planned objects removed — and reporting the difference.
+
+```bash
+wal-g delete retain 7 --explain
+```
+
+```
+wal-g delete retain 7 --explain
+
+Would delete 21 object(s), 22.2 KiB
+  backups      1 deleted, 1 retained
+  WAL segments 18
+
+Backups to delete
+  2026-08-01T00:05:00Z  base_000000010000000000000002
+
+Backups to keep
+  2026-08-02T00:05:00Z  base_000000010000000000000014
+
+Recovery window
+  before 2026-08-01T00:05:00Z .. 2026-08-03T14:21:51Z  (2d14h recoverable across 1 window(s))
+  after  2026-08-02T00:05:00Z .. 2026-08-03T14:21:51Z  (1d14h recoverable across 1 window(s))
+
+       Reclaims 22.2 KiB across 21 object(s): 1 backup(s) and 18 WAL segment(s).
+       The earliest restorable point moves forward from 2026-08-01T00:05:00Z to 2026-08-02T00:05:00Z, giving up 1d0h of history.
+       Recoverable time goes from 2d14h to 1d14h.
+
+Nothing was deleted. Re-run with --confirm to execute.
+```
+
+Lines starting with ``[WARN]`` mark consequences that are usually not intended:
+
+- the delete leaves **nothing** restorable;
+- the **latest** restorable point moves backwards, meaning recently archived WAL is in scope;
+- a new **gap** opens in the recovery window, so the remaining range is no longer recoverable end to end;
+- backups are **retained but become unrestorable** — a delta whose base is deleted, or a backup whose WAL is going. These keep costing storage and keep appearing in ``backup-list`` while being unable to restore anything;
+- a **permanent** backup is in scope.
+
+Trimming the *old* end of the window is what a retention delete is for, so it is reported as an effect rather than a warning.
+
+``--explain`` and ``--confirm`` cannot be combined: they ask for opposite things, and guessing wrong in one direction is not recoverable. Use ``--format json`` to consume the report from a pipeline.
+
+The scope shown is computed by the same handler, arguments and filters as the real delete, with deletion swapped for collection at the last step, so an explained delete cannot disagree with the delete it describes.
+
+### ``pitr-window``
+
+Reports the ranges of time the storage can currently be restored to.
+
+```bash
+wal-g pitr-window
+```
+
+```
+wal-g pitr-window
+
+Recoverable  2026-08-01T00:05:00Z .. 2026-08-03T14:21:51Z  (2d14h across 1 window(s))
+
+  timeline 1  2026-08-01T00:05:00Z .. 2026-08-03T14:21:51Z  (2d14h)
+              WAL 000000010000000000000002 .. 000000010000000000000028, 2 backup(s)
+
+2 of 2 backup(s) can serve a restore.
+```
+
+A restore needs a backup that can reach a consistent state and an unbroken run of WAL from it. So a window opens when a backup **finishes** — recovery cannot target a moment part-way through a backup — and runs until the first missing WAL segment after it. Overlapping windows merge; what is left between them is a **gap**, a stretch of history that no backup in storage can recover to.
+
+Windows are reported per timeline. A restore can follow a timeline switch, but which fork a given moment belongs to depends on the recovery target, so folding timelines together would report windows that no single restore could deliver.
+
+Window ends are dated from the **upload time** of the last WAL segment, which approximates the commit times inside it. Reading the actual commit timestamps would mean fetching and decrypting every segment; the upload time is close enough to size a recovery window and costs one listing.
+
+Backups that cannot serve a restore at all are listed separately, with the reason: a delta whose base is gone (``broken_increment_chain``), or a backup missing the WAL it needs to reach consistency (``missing_own_wal``).
+
+Flags:
+
+- ``--format`` Output format: ``text`` or ``json``. Default: ``text``.
+- ``--min-window`` Exit non-zero if less than this much recoverable time remains, e.g. ``72h``.
+
+The exit code is 1 when nothing is restorable, or when ``--min-window`` is set and the recoverable span falls short of it; 0 otherwise. That makes it usable as a CI or cron gate against a retention policy that has quietly stopped covering its stated RPO:
+
+```bash
+wal-g pitr-window --min-window 72h || alert "PITR window under 3 days"
+```
+
 ### ``delete garbage``
 
 Deletes outdated WAL archives and backups leftover files from storage, e.g. unsuccessfully backups or partially deleted ones. Will remove all non-permanent objects before the earliest non-permanent backup. This command is useful when backups are being deleted by the `delete target` command.
