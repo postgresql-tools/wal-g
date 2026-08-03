@@ -58,9 +58,9 @@ Delta-backup is the difference between previously taken backup and present state
 Restoration process will automatically fetch all necessary deltas and base backup and compose valid restored backup (you still need WALs after start of last backup to restore consistent cluster).
 Delta computation is based on ModTime of file system and LSN number of pages in datafiles.
 
-* `WALG_RPO`, `WALG_RETENTION_WINDOW`, `WALG_RETENTION_COUNT`
+* `WALG_RPO`, `WALG_RTO`, `WALG_RETENTION_WINDOW`, `WALG_RETENTION_COUNT`
 
-The recovery objectives `wal-g retention-validate` judges the retention policy against: the most recent data loss tolerated, how far back a restore must remain possible, and the backup count the policy keeps. Durations accept a `d` suffix for days. See [retention-validate](#retention-validate).
+The recovery objectives this fork judges against: the most recent data loss tolerated (`WALG_RPO`), the recovery time budget (`WALG_RTO`), how far back a restore must remain possible, and the backup count the retention policy keeps. Durations accept a `d` suffix for days. Used by [retention-validate](#retention-validate) and [restore-test](#restore-test).
 
 * `WALG_DELTA_ORIGIN`
 
@@ -760,6 +760,64 @@ The exit code is 0 when nothing failed and 1 otherwise; warnings do not affect i
 ```bash
 # Fails the build if the policy cannot deliver what it claims
 wal-g retention-validate --rpo 1h --retention-window 30d --retain 36 --format json
+```
+
+### ``restore-test``
+
+Rehearses a restore for real, times it, and judges it against the recovery objectives you declare. A backup that has never been restored is a backup nobody has tested.
+
+```bash
+wal-g restore-test --target-dir /mnt/drill --rto 2h --rpo 1h
+```
+
+```
+wal-g restore-test
+
+Restoring  base_000000010000000000000014 into /mnt/drill
+
+[ OK ] target-dir   /mnt/drill is empty and is not the live data directory
+[ OK ] space        412 GiB free for a restore of about 168 GiB
+[ OK ] fetch        168 GiB restored in 41m18s
+       69 MiB/s
+[SKIP] replay       skipped (--start-postgres not given)
+[ OK ] rto          recovery took 41m18s of the 2h0m budget (fetch only)
+       -> Replay time is NOT included. Pass --start-postgres to measure it.
+[ OK ] rpo          restorable to within 8m, inside the 1h0m RPO
+
+4 passed, 0 warned, 0 failed, 1 skipped
+Drill passed. Scratch directory removed.
+```
+
+By default the drill measures the **fetch only**, and the `rto` phase says so rather than letting a pass read as a full recovery rehearsal. Pass `--start-postgres` to also start the restored cluster on a scratch port (5433 by default), replay WAL to consistency, and include that in the measured time. That needs `pg_ctl`, found via `--pg-ctl` or `PATH`. Recovery configuration is written the way the restored cluster's version expects — `recovery.signal` plus `postgresql.conf` for PostgreSQL 12 and later, `recovery.conf` before it.
+
+**Safety.** The drill writes a whole cluster and then deletes it, so the target is checked before anything happens:
+
+- the target directory must **not** be `PGDATA`, or inside it;
+- it must be **empty or absent** — the drill refuses to restore over existing files;
+- what the drill creates, it removes, unless `--keep` is given. A directory that already existed is emptied rather than removed.
+
+The restore runs as a **separate wal-g process**. A restore that fails hard calls `os.Exit`, and a drill that died without a verdict — leaving the half-written cluster behind — would be a poor test harness. Running the documented command also means the drill exercises the path an operator would actually use, config resolution included. A failed restore is reported with the real error:
+
+```
+[FAIL] fetch        the restore failed
+       ERROR: Failed to fetch backup: Expect pg_control archive, but not found
+       -> This is the failure a real restore would hit. Run `wal-g backup-fetch` directly for the full output.
+```
+
+Flags:
+
+- `--target-dir` (required) Directory to restore into.
+- `--rto`, `--rpo` Budgets to judge against. Default to `WALG_RTO` and `WALG_RPO`.
+- `--start-postgres` Start the restored cluster and measure replay.
+- `--pg-ctl`, `--port`, `--start-timeout` Control that cluster.
+- `--keep` Leave the restored cluster in place for inspection.
+- `--wal-g-binary` The wal-g to restore with. Defaults to this binary, so a drill rehearses the build that is deployed.
+- `--format` `text` or `json`.
+
+The exit code is 0 when nothing failed and 1 otherwise, which makes it usable from cron as a standing rehearsal:
+
+```bash
+wal-g restore-test --target-dir /mnt/drill --rto 2h --format json || alert "restore drill failed"
 ```
 
 ### ``delete garbage``
