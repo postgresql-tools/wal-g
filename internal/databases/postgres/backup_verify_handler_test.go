@@ -25,7 +25,7 @@ const testBackupName = "base_000000010000000000000001"
 
 func TestBackupVerify_SentinelMissing(t *testing.T) {
 	root := memory.NewFolder("", memory.NewKVS())
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "json", io.Discard)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "json"}, io.Discard)
 	if code != 1 {
 		t.Errorf("expected exit code 1 for missing sentinel, got %d", code)
 	}
@@ -34,7 +34,7 @@ func TestBackupVerify_SentinelMissing(t *testing.T) {
 func TestBackupVerify_SentinelCorruptJSON(t *testing.T) {
 	root := memory.NewFolder("", memory.NewKVS())
 	putBackupSentinel(root, testBackupName, []byte(`{invalid json`))
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "json", io.Discard)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "json"}, io.Discard)
 	if code != 1 {
 		t.Errorf("expected exit code 1 for corrupt sentinel, got %d", code)
 	}
@@ -43,7 +43,7 @@ func TestBackupVerify_SentinelCorruptJSON(t *testing.T) {
 func TestBackupVerify_SentinelTruncatedJSON(t *testing.T) {
 	root := memory.NewFolder("", memory.NewKVS())
 	putBackupSentinel(root, testBackupName, []byte(`{"LSN":`))
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "json", io.Discard)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "json"}, io.Discard)
 	if code != 1 {
 		t.Errorf("expected exit code 1 for truncated sentinel, got %d", code)
 	}
@@ -54,12 +54,14 @@ func TestBackupVerify_MissingTarPart(t *testing.T) {
 	sentinel := minimalSentinel()
 	filesMeta := filesMetaWithParts("part_000.tar", "part_001.tar")
 
+	// part_001.tar is deliberately absent from storage; part_000.tar is a real tar
+	// so the canary has something valid to read and only the gap drives the failure.
 	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
-		"part_000.tar": []byte("content"),
+		"part_000.tar": buildTarPart(map[string][]byte{"dummy": {}}),
 	}, nil)
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "text"}, buf)
 	if code != 1 {
 		t.Errorf("expected exit code 1 for missing tar part, got %d", code)
 	}
@@ -82,12 +84,10 @@ func TestBackupVerify_ChecksumCoverageMixed(t *testing.T) {
 		},
 	}
 
-	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
-		"part_000.tar": []byte("content"),
-	}, nil)
+	putBackup(root, testBackupName, sentinel, filesMeta, realTarParts(filesMeta), nil)
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "text"}, buf)
 	if code != 0 {
 		t.Errorf("expected exit code 0, got %d", code)
 	}
@@ -109,11 +109,9 @@ func TestBackupVerify_ChecksumCoverageAllPresent(t *testing.T) {
 		},
 	}
 
-	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
-		"part_000.tar": []byte("content"),
-	}, nil)
+	putBackup(root, testBackupName, sentinel, filesMeta, realTarParts(filesMeta), nil)
 
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "json", io.Discard)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "json"}, io.Discard)
 	if code != 0 {
 		t.Errorf("expected exit code 0, got %d", code)
 	}
@@ -123,7 +121,7 @@ func TestBackupVerify_DeployMetadataNone(t *testing.T) {
 	root, _, _ := setupBackupWithSentinelFixture(t, "testdata/backup_verify/sentinel_v0141.json")
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "text"}, buf)
 	if code != 0 {
 		t.Errorf("expected exit code 0 for pre-deploy-tagging backup, got %d (output: %s)", code, buf.String())
 	}
@@ -136,7 +134,7 @@ func TestBackupVerify_DeployMetadataPresent(t *testing.T) {
 	root, _, _ := setupBackupWithSentinelFixture(t, "testdata/backup_verify/sentinel_with_deploy.json")
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "text"}, buf)
 	if code != 0 {
 		t.Errorf("expected exit code 0 for deploy metadata test, got %d (output: %s)", code, buf.String())
 	}
@@ -159,7 +157,7 @@ func TestBackupVerify_WALChainOK(t *testing.T) {
 	putBackupWithMeta(root, testBackupName, sentinel, filesMeta, emptyTarParts(filesMeta), walFiles, lsnPtr(0x1000000), lsnPtr(0x1FFFFFF))
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "text"}, buf)
 	if code != 0 {
 		t.Errorf("expected exit code 0 for clean WAL chain, got %d (output: %s)", code, buf.String())
 	}
@@ -182,7 +180,7 @@ func TestBackupVerify_WALGapDetected(t *testing.T) {
 	putBackupWithMeta(root, testBackupName, sentinel, filesMeta, emptyTarParts(filesMeta), walFiles, lsnPtr(0x1000000), lsnPtr(0x1FFFFFF))
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 0, 0, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "text"}, buf)
 	if code != 0 {
 		t.Errorf("expected exit code 0 for informational WAL gaps, got %d (output: %s)", code, buf.String())
 	}
@@ -216,7 +214,7 @@ func TestBackupVerify_Tier2AllMatch(t *testing.T) {
 	}, nil)
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 100, 42, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, SamplePct: 100, Seed: 42, Format: "text"}, buf)
 	if code != 0 {
 		t.Errorf("expected exit code 0 for matching checksums, got %d (output: %s)", code, buf.String())
 	}
@@ -252,7 +250,7 @@ func TestBackupVerify_Tier2Mismatch(t *testing.T) {
 	}, nil)
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 100, 42, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, SamplePct: 100, Seed: 42, Format: "text"}, buf)
 	if code != 1 {
 		t.Errorf("expected exit code 1 for checksum mismatch, got %d (output: %s)", code, buf.String())
 	}
@@ -284,7 +282,7 @@ func TestBackupVerify_Tier2PreChecksumBackup(t *testing.T) {
 	}, nil)
 
 	buf := &bytes.Buffer{}
-	code := HandleBackupVerify(root, testBackupName, 100, 42, "", "", "text", buf)
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, SamplePct: 100, Seed: 42, Format: "text"}, buf)
 	if code != 0 {
 		t.Errorf("expected exit code 0 for pre-checksum backup, got %d (output: %s)", code, buf.String())
 	}
@@ -318,8 +316,8 @@ func TestBackupVerify_SampleSeedReproducibility(t *testing.T) {
 
 	buf1 := &bytes.Buffer{}
 	buf2 := &bytes.Buffer{}
-	code1 := HandleBackupVerify(root, testBackupName, 50, 12345, "", "", "json", buf1)
-	code2 := HandleBackupVerify(root, testBackupName, 50, 12345, "", "", "json", buf2)
+	code1 := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, SamplePct: 50, Seed: 12345, Format: "json"}, buf1)
+	code2 := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, SamplePct: 50, Seed: 12345, Format: "json"}, buf2)
 
 	if code1 != 0 || code2 != 0 {
 		t.Errorf("expected exit code 0 for both runs, got %d and %d", code1, code2)
@@ -345,13 +343,155 @@ func TestBackupVerify_LATESTBackup(t *testing.T) {
 	sentinel := minimalSentinel()
 	filesMeta := minimalFilesMeta()
 
-	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
-		"part_000.tar": []byte("content"),
-	}, nil)
+	putBackup(root, testBackupName, sentinel, filesMeta, realTarParts(filesMeta), nil)
 
-	code := HandleBackupVerify(root, "", 0, 0, "", "", "json", io.Discard)
+	code := HandleBackupVerify(root, BackupVerifyOptions{Format: "json"}, io.Discard)
 	if code != 0 {
 		t.Errorf("expected exit code 0 for LATEST backup resolution, got %d", code)
+	}
+}
+
+func TestBackupVerify_DecryptCanaryPass(t *testing.T) {
+	root := memory.NewFolder("", memory.NewKVS())
+	sentinel := minimalSentinel()
+	filesMeta := minimalFilesMeta()
+
+	putBackup(root, testBackupName, sentinel, filesMeta, realTarParts(filesMeta), nil)
+
+	buf := &bytes.Buffer{}
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "json"}, buf)
+	if code != 0 {
+		t.Fatalf("expected exit code 0 for readable backup, got %d (output: %s)", code, buf.String())
+	}
+
+	var res BackupVerifyResult
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if !res.DecryptCanary.Attempted {
+		t.Errorf("expected canary to be attempted, got skip reason %q", res.DecryptCanary.SkipReason)
+	}
+	if !res.DecryptCanary.Pass {
+		t.Errorf("expected canary to pass, got error %q", res.DecryptCanary.Error)
+	}
+	if res.DecryptCanary.Crypter != "none" {
+		t.Errorf("expected crypter 'none' with no encryption configured, got %q", res.DecryptCanary.Crypter)
+	}
+}
+
+func TestBackupVerify_DecryptCanaryUnreadablePart(t *testing.T) {
+	root := memory.NewFolder("", memory.NewKVS())
+	sentinel := minimalSentinel()
+	filesMeta := minimalFilesMeta()
+
+	// Not a tar stream: stands in for a partition this host cannot open, which is
+	// what an unusable key or a truncated upload looks like from the reader's side.
+	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
+		"part_000.tar": []byte("this is not a tar stream"),
+	}, nil)
+
+	buf := &bytes.Buffer{}
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "text"}, buf)
+	if code != 1 {
+		t.Errorf("expected exit code 1 when the canary cannot open the backup, got %d (output: %s)", code, buf.String())
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("Decrypt canary: FAIL")) {
+		t.Errorf("expected canary failure in output, got:\n%s", buf.String())
+	}
+}
+
+func TestBackupVerify_DecryptCanarySkippedByFlag(t *testing.T) {
+	root := memory.NewFolder("", memory.NewKVS())
+	sentinel := minimalSentinel()
+	filesMeta := minimalFilesMeta()
+
+	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
+		"part_000.tar": []byte("this is not a tar stream"),
+	}, nil)
+
+	buf := &bytes.Buffer{}
+	code := HandleBackupVerify(root,
+		BackupVerifyOptions{BackupName: testBackupName, Format: "text", SkipCanary: true}, buf)
+	if code != 0 {
+		t.Errorf("expected exit code 0 when the canary is disabled, got %d (output: %s)", code, buf.String())
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("Decrypt canary: SKIPPED")) {
+		t.Errorf("expected canary to report as skipped, got:\n%s", buf.String())
+	}
+}
+
+func TestBackupVerify_DecryptCanarySkippedInTier2(t *testing.T) {
+	fileContent := []byte("tier 2 covers decryption already")
+	h := sha256.Sum256(fileContent)
+
+	root := memory.NewFolder("", memory.NewKVS())
+	sentinel := minimalSentinel()
+	filesMeta := FilesMetadataDto{
+		Files: internal.BackupFileList{
+			"testfile.txt": {SHA256: hex.EncodeToString(h[:])},
+		},
+		TarFileSets: map[string][]string{
+			"part_000.tar": {"testfile.txt"},
+		},
+	}
+
+	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
+		"part_000.tar": buildTarPart(map[string][]byte{"testfile.txt": fileContent}),
+	}, nil)
+
+	buf := &bytes.Buffer{}
+	code := HandleBackupVerify(root,
+		BackupVerifyOptions{BackupName: testBackupName, SamplePct: 100, Seed: 42, Format: "json"}, buf)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (output: %s)", code, buf.String())
+	}
+
+	var res BackupVerifyResult
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if res.DecryptCanary.Attempted {
+		t.Errorf("expected canary to be skipped when Tier 2 runs, but it was attempted")
+	}
+	if res.DecryptCanary.SkipReason == "" {
+		t.Errorf("expected a skip reason explaining Tier 2 coverage")
+	}
+}
+
+func TestBackupVerify_DecryptCanaryPicksSmallestPart(t *testing.T) {
+	small := buildTarPart(map[string][]byte{"small.txt": []byte("s")})
+	large := buildTarPart(map[string][]byte{"large.txt": bytes.Repeat([]byte("x"), 32*1024)})
+
+	root := memory.NewFolder("", memory.NewKVS())
+	sentinel := minimalSentinel()
+	filesMeta := FilesMetadataDto{
+		Files: internal.BackupFileList{
+			"small.txt": {},
+			"large.txt": {},
+		},
+		TarFileSets: map[string][]string{
+			"part_000.tar": {"large.txt"},
+			"part_001.tar": {"small.txt"},
+		},
+	}
+
+	putBackup(root, testBackupName, sentinel, filesMeta, map[string][]byte{
+		"part_000.tar": large,
+		"part_001.tar": small,
+	}, nil)
+
+	buf := &bytes.Buffer{}
+	code := HandleBackupVerify(root, BackupVerifyOptions{BackupName: testBackupName, Format: "json"}, buf)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (output: %s)", code, buf.String())
+	}
+
+	var res BackupVerifyResult
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if res.DecryptCanary.Part != "part_001.tar" {
+		t.Errorf("expected the smallest partition to be sampled, got %q", res.DecryptCanary.Part)
 	}
 }
 
@@ -522,6 +662,20 @@ func emptyTarParts(filesMeta FilesMetadataDto) map[string][]byte {
 	parts := make(map[string][]byte)
 	for name := range filesMeta.TarFileSets {
 		parts[name] = []byte{}
+	}
+	return parts
+}
+
+// realTarParts builds a genuine tar stream for every partition the manifest
+// references, so the Tier 1 decrypt canary has something valid to parse.
+func realTarParts(filesMeta FilesMetadataDto) map[string][]byte {
+	parts := make(map[string][]byte)
+	for partName, fileNames := range filesMeta.TarFileSets {
+		files := make(map[string][]byte, len(fileNames))
+		for _, f := range fileNames {
+			files[f] = []byte{}
+		}
+		parts[partName] = buildTarPart(files)
 	}
 	return parts
 }

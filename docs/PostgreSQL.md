@@ -58,6 +58,12 @@ Delta-backup is the difference between previously taken backup and present state
 Restoration process will automatically fetch all necessary deltas and base backup and compose valid restored backup (you still need WALs after start of last backup to restore consistent cluster).
 Delta computation is based on ModTime of file system and LSN number of pages in datafiles.
 
+Once the limit is reached, the next `backup-push` is **automatically promoted to a full backup**. This fork resolves the chain depth by **walking the increment chain in storage** rather than by trusting the delta count recorded in the base backup's sentinel — see [Delta chain depth and auto-promotion](#delta-chain-depth-and-auto-promotion).
+
+* `WALG_RPO`, `WALG_RTO`, `WALG_RETENTION_WINDOW`, `WALG_RETENTION_COUNT`
+
+The recovery objectives this fork judges against: the most recent data loss tolerated (`WALG_RPO`), the recovery time budget (`WALG_RTO`), how far back a restore must remain possible (`WALG_RETENTION_WINDOW`), and the backup count the retention policy keeps (`WALG_RETENTION_COUNT`). Durations accept a `d` suffix for days, so a 30-day window is `30d` rather than `720h`. Used by [retention-validate](#retention-validate) and [restore-test](#restore-test).
+
 * `WALG_DELTA_ORIGIN`
 
 To configure base for next delta backup (only if `WALG_DELTA_MAX_STEPS` is not exceeded). `WALG_DELTA_ORIGIN` can be LATEST (chaining increments), LATEST_FULL (for bases where volatile part is compact and chaining has no meaning - deltas overwrite each other). Defaults to LATEST.
@@ -134,6 +140,48 @@ WAL-G can fetch the backup that has the specific UserData (stored in backup meta
 ```bash
 wal-g backup-fetch /path --target-user-data "{ \"x\": [3], \"y\": 4 }"
 ```
+
+#### Free-space preflight
+
+Before extracting anything, `backup-fetch` compares the backup's recorded
+uncompressed size against the free space on the filesystems it would write to. A
+restore that cannot fit is refused in the time it takes to read the sentinel,
+rather than failing hours later with a half-written data directory.
+
+```bash
+# Require 50% headroom instead of the default 20%
+wal-g backup-fetch /path LATEST --space-margin 1.5
+
+# Proceed even though the preflight says it will not fit
+wal-g backup-fetch /path LATEST --force
+
+# Skip the check entirely
+wal-g backup-fetch /path LATEST --skip-space-check
+```
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--space-margin` | `1.2` | Multiple of the uncompressed size that must be free. The headroom covers WAL replayed during recovery and the cluster accepting writes once it is up |
+| `--force` | `false` | Downgrade a refusal to a warning |
+| `--skip-space-check` | `false` | Do not check at all |
+
+The check reports one of four verdicts, and only ever refuses on the second:
+
+- **sufficient** — the restore fits, with margin.
+- **insufficient** — it demonstrably does not fit. The restore is refused unless `--force`.
+- **indeterminate** — the backup uses tablespaces spread across several
+  filesystems. A backup sentinel records only a *total* uncompressed size, with no
+  per-tablespace breakdown, so how that total divides between those filesystems is
+  not knowable before extracting. The restore proceeds with a warning. Only a total
+  that cannot fit even when every filesystem is pooled is treated as a refusal.
+- **unknown** — the backup predates size recording, so there is nothing to size
+  against. The restore proceeds.
+
+Tablespaces that share a filesystem are collapsed into a single pool, so they are
+not each credited with the same free space.
+
+The same sizing logic backs `wal-g doctor`'s `restore-space` check, so a
+preflight refusal and a doctor failure always agree.
 
 #### Reverse delta unpack
 
@@ -332,6 +380,39 @@ INFO: Selecting the backup with name base_000000010000000100000046_D_00000001000
 INFO: Delta will be made from full backup.
 INFO: Delta backup from base_000000010000000100000040 with LSN 140000060.
 ```
+
+#### Delta chain depth and auto-promotion
+
+When the chain reaches `WALG_DELTA_MAX_STEPS`, the next `backup-push` is taken as a full backup instead of another delta. That much is upstream behaviour. What this fork changes is **how the depth is established**.
+
+Upstream reads the delta count out of the base backup's sentinel and adds one. That count is written once and never revisited, so when it is missing or wrong — an older backup, a partially written sentinel, a backup copied in from another storage — counting restarts from one and the chain keeps growing silently past its limit. A restore then has to apply every link in a chain nobody knew was that long.
+
+This fork walks the increment chain in storage instead, following each link back to the full backup at its base. The walk costs one sentinel read per link, once per `backup-push`, and cannot drift from what is actually there. When the walked depth disagrees with the recorded count, the walked depth is what the limit is applied to, and the disagreement is logged:
+
+```
+WARNING: base_...17 records a delta count of 1 but sits 4 link(s) into a chain in storage.
+         Using the depth found in storage, so the limit is applied to the real chain.
+```
+
+Promotion to a full backup happens for these reasons, which are recorded on the resulting backup's sentinel as `DeltaPromotionReason`:
+
+| Reason | Meaning |
+| --- | --- |
+| `chain_at_max_depth` | The chain has reached `WALG_DELTA_MAX_STEPS` |
+| `chain_broken` | A backup the chain depends on is not in storage |
+| `chain_cycle` | The chain's links refer back to each other |
+| `chain_unreadable` | A link's sentinel could not be read, or names an increment base without the rest of its increment fields, so the true depth is unknown |
+| `base_is_permanent` | The base is a permanent backup, and a delta on it would pin it in place |
+| `base_without_lsn` | The base predates the delta feature and records no start LSN |
+
+The reason is written only when a delta was actually possible and was declined. Full backups taken because deltas are switched off, or because there is no previous backup, carry no reason — recording those would put a field on nearly every full backup and bury the cases worth auditing.
+
+Because a broken or unreadable chain promotes rather than extends, a corrupt link cannot be built on top of. That also keeps an inconsistent sentinel away from the increment-handling code, which panics on one.
+
+What the limit counts depends on `WALG_DELTA_ORIGIN`:
+
+- **LATEST** (default) chains each delta onto the previous one, so the chain deepens and a restore must apply every link. The depth walked from storage is what the limit bounds.
+- **LATEST_FULL** rebases every delta onto the full backup, so the chain is never deeper than one link and a walked depth could never reach the limit. There the limit bounds how many deltas accumulate on a single full backup — which is what keeps that full backup from getting arbitrarily stale — and that count comes from the base's own sentinel. The walk still applies: a broken or unreadable chain promotes in either mode.
 
 #### Page checksums verification
 To enable verification of the page checksums during the backup-push, use the `--verify` flag or set the `WALG_VERIFY_PAGE_CHECKSUMS` env variable. If found any, corrupted block numbers (currently no more than 10 of them) will be recorded to the backup sentinel json, for example:
@@ -575,6 +656,203 @@ Use the ``--use-sentinel-time`` flag on ``wal-g delete`` so WAL-G orders backups
 
 ```bash
 wal-g delete retain FULL 5 --use-sentinel-time --confirm
+```
+
+### ``delete --explain``
+
+Every ``delete`` subcommand accepts ``--explain``. It reports what the delete would remove **and what could still be recovered afterwards**, then exits without deleting anything.
+
+Running ``delete`` without ``--confirm`` already tells you how many objects match. That number does not answer the question that actually matters before a retention change: *how far back will I still be able to restore?* ``--explain`` answers it by computing the recovery window twice — once against storage as it stands, once against storage with the planned objects removed — and reporting the difference.
+
+```bash
+wal-g delete retain 7 --explain
+```
+
+```
+wal-g delete retain 7 --explain
+
+Would delete 21 object(s), 22.2 KiB
+  backups      1 deleted, 1 retained
+  WAL segments 18
+
+Backups to delete
+  2026-08-01T00:05:00Z  base_000000010000000000000002
+
+Backups to keep
+  2026-08-02T00:05:00Z  base_000000010000000000000014
+
+Recovery window
+  before 2026-08-01T00:05:00Z .. 2026-08-03T14:21:51Z  (2d14h recoverable across 1 window(s))
+  after  2026-08-02T00:05:00Z .. 2026-08-03T14:21:51Z  (1d14h recoverable across 1 window(s))
+
+       Reclaims 22.2 KiB across 21 object(s): 1 backup(s) and 18 WAL segment(s).
+       The earliest restorable point moves forward from 2026-08-01T00:05:00Z to 2026-08-02T00:05:00Z, giving up 1d0h of history.
+       Recoverable time goes from 2d14h to 1d14h.
+
+Nothing was deleted. Re-run with --confirm to execute.
+```
+
+Lines starting with ``[WARN]`` mark consequences that are usually not intended:
+
+- the delete leaves **nothing** restorable;
+- the **latest** restorable point moves backwards, meaning recently archived WAL is in scope;
+- a new **gap** opens in the recovery window, so the remaining range is no longer recoverable end to end;
+- backups are **retained but become unrestorable** — a delta whose base is deleted, or a backup whose WAL is going. These keep costing storage and keep appearing in ``backup-list`` while being unable to restore anything;
+- a **permanent** backup is in scope.
+
+Trimming the *old* end of the window is what a retention delete is for, so it is reported as an effect rather than a warning.
+
+``--explain`` and ``--confirm`` cannot be combined: they ask for opposite things, and guessing wrong in one direction is not recoverable. Use ``--format json`` to consume the report from a pipeline.
+
+The scope shown is computed by the same handler, arguments and filters as the real delete, with deletion swapped for collection at the last step, so an explained delete cannot disagree with the delete it describes.
+
+### ``pitr-window``
+
+Reports the ranges of time the storage can currently be restored to.
+
+```bash
+wal-g pitr-window
+```
+
+```
+wal-g pitr-window
+
+Recoverable  2026-08-01T00:05:00Z .. 2026-08-03T14:21:51Z  (2d14h across 1 window(s))
+
+  timeline 1  2026-08-01T00:05:00Z .. 2026-08-03T14:21:51Z  (2d14h)
+              WAL 000000010000000000000002 .. 000000010000000000000028, 2 backup(s)
+
+2 of 2 backup(s) can serve a restore.
+```
+
+A restore needs a backup that can reach a consistent state and an unbroken run of WAL from it. So a window opens when a backup **finishes** — recovery cannot target a moment part-way through a backup — and runs until the first missing WAL segment after it. Overlapping windows merge; what is left between them is a **gap**, a stretch of history that no backup in storage can recover to.
+
+Windows are reported per timeline. A restore can follow a timeline switch, but which fork a given moment belongs to depends on the recovery target, so folding timelines together would report windows that no single restore could deliver.
+
+Window ends are dated from the **upload time** of the last WAL segment, which approximates the commit times inside it. Reading the actual commit timestamps would mean fetching and decrypting every segment; the upload time is close enough to size a recovery window and costs one listing.
+
+Backups that cannot serve a restore at all are listed separately, with the reason: a delta whose base is gone (``broken_increment_chain``), or a backup missing the WAL it needs to reach consistency (``missing_own_wal``).
+
+Flags:
+
+- ``--format`` Output format: ``text`` or ``json``. Default: ``text``.
+- ``--min-window`` Exit non-zero if less than this much recoverable time remains, e.g. ``72h``.
+
+The exit code is 1 when nothing is restorable, or when ``--min-window`` is set and the recoverable span falls short of it; 0 otherwise. That makes it usable as a CI or cron gate against a retention policy that has quietly stopped covering its stated RPO:
+
+```bash
+wal-g pitr-window --min-window 72h || alert "PITR window under 3 days"
+```
+
+### ``retention-validate``
+
+Checks that the retention policy you run actually delivers the recovery objectives you claim.
+
+```bash
+wal-g retention-validate --rpo 1h --retention-window 30d --retain 36
+```
+
+Two questions are asked, and they fail independently:
+
+- Does storage meet the objectives **right now**?
+- Would it still meet them **once the declared retention policy has been applied**?
+
+A storage that passes the first and fails the second is the case this command exists for. It looks healthy only because the policy has not caught up with it yet — the backups that satisfy the window today are the ones tonight's `delete retain` is about to remove.
+
+The second question is answered by running the declared policy through the **same delete handler `delete retain` uses**, with deletion swapped for collection. What is validated is the delete that would actually happen, not a model of it. Nothing is deleted.
+
+```
+wal-g retention-validate
+
+Declared  RPO 1d0h, retention window 2d0h, retain 1
+
+[ OK ] rpo              1h13m of data at risk, within the 1d0h RPO
+       newest restorable point is 2026-08-03T14:21:51Z, 1h13m ago
+[ OK ] retention-window Storage is continuously restorable back to 2026-08-01T00:05:00Z, covering the 2d0h required
+[FAIL] policy-outcome   after `delete retain 1`, storage reaches back to 2026-08-02T00:05:00Z, 8h29m short of the 2d0h required
+       a restore to any point before 2026-08-02T00:05:00Z is not possible
+       -> Retaining 1 backup(s) does not sustain the declared window. Raise the retain count, or lower the declared window to what the policy can keep.
+[WARN] backup-cadence   retaining 1 backup(s) leaves no window at all between backups
+       -> Retain at least two backups so a window exists between the oldest and newest.
+
+2 passed, 1 warned, 1 failed, 0 skipped
+Objectives NOT met: 1 check(s) failed.
+```
+
+| Check | What it asks |
+| --- | --- |
+| `rpo` | How much data a failure right now would lose: the distance from the newest restorable point to now. Catches stalled WAL archiving. |
+| `retention-window` | Whether the required period is **continuously** restorable. A total of recoverable hours is not enough — the same total can be one window or several with holes between them, and only one of those is a retention window. |
+| `policy-outcome` | Whether it still would be after the policy runs. |
+| `backup-cadence` | Whether the policy can **keep** meeting the window at the observed backup cadence, rather than only today. Retaining N backups holds a window about (N−1) intervals wide; if that is short of the declared window, the policy is guaranteed to fail eventually even while storage currently passes. |
+
+The window checks end at the newest restorable point rather than at now, because the distance from there to now is what `rpo` measures. Judging it twice would report one problem as two. Gaps older than the declared window are ignored — they are real, and `pitr-window` reports them, but they are not this policy's problem.
+
+Objectives may be declared as flags or as settings (`WALG_RPO`, `WALG_RETENTION_WINDOW`, `WALG_RETENTION_COUNT`), so a cron job and a CI gate can be judged against the same numbers. An objective that is not declared is **skipped, not passed** — and a report where everything was skipped says so rather than claiming the objectives were met.
+
+The exit code is 0 when nothing failed and 1 otherwise; warnings do not affect it.
+
+```bash
+# Fails the build if the policy cannot deliver what it claims
+wal-g retention-validate --rpo 1h --retention-window 30d --retain 36 --format json
+```
+
+### ``restore-test``
+
+Rehearses a restore for real, times it, and judges it against the recovery objectives you declare. A backup that has never been restored is a backup nobody has tested.
+
+```bash
+wal-g restore-test --target-dir /mnt/drill --rto 2h --rpo 1h
+```
+
+```
+wal-g restore-test
+
+Restoring  base_000000010000000000000014 into /mnt/drill
+
+[ OK ] target-dir   /mnt/drill is empty and is not the live data directory
+[ OK ] space        412 GiB free for a restore of about 168 GiB
+[ OK ] fetch        168 GiB restored in 41m18s
+       69 MiB/s
+[SKIP] replay       skipped (--start-postgres not given)
+[ OK ] rto          recovery took 41m18s of the 2h0m budget (fetch only)
+       -> Replay time is NOT included. Pass --start-postgres to measure it.
+[ OK ] rpo          restorable to within 8m, inside the 1h0m RPO
+
+4 passed, 0 warned, 0 failed, 1 skipped
+Drill passed. Scratch directory removed.
+```
+
+By default the drill measures the **fetch only**, and the `rto` phase says so rather than letting a pass read as a full recovery rehearsal. Pass `--start-postgres` to also start the restored cluster on a scratch port (5433 by default), replay WAL to consistency, and include that in the measured time. That needs `pg_ctl`, found via `--pg-ctl` or `PATH`. Recovery configuration is written the way the restored cluster's version expects — `recovery.signal` plus `postgresql.conf` for PostgreSQL 12 and later, `recovery.conf` before it.
+
+**Safety.** The drill writes a whole cluster and then deletes it, so the target is checked before anything happens:
+
+- the target directory must **not** be `PGDATA`, or inside it;
+- it must be **empty or absent** — the drill refuses to restore over existing files;
+- what the drill creates, it removes, unless `--keep` is given. A directory that already existed is emptied rather than removed.
+
+The restore runs as a **separate wal-g process**. A restore that fails hard calls `os.Exit`, and a drill that died without a verdict — leaving the half-written cluster behind — would be a poor test harness. Running the documented command also means the drill exercises the path an operator would actually use, config resolution included. A failed restore is reported with the real error:
+
+```
+[FAIL] fetch        the restore failed
+       ERROR: Failed to fetch backup: Expect pg_control archive, but not found
+       -> This is the failure a real restore would hit. Run `wal-g backup-fetch` directly for the full output.
+```
+
+Flags:
+
+- `--target-dir` (required) Directory to restore into.
+- `--rto`, `--rpo` Budgets to judge against. Default to `WALG_RTO` and `WALG_RPO`.
+- `--start-postgres` Start the restored cluster and measure replay.
+- `--pg-ctl`, `--port`, `--start-timeout` Control that cluster.
+- `--keep` Leave the restored cluster in place for inspection.
+- `--wal-g-binary` The wal-g to restore with. Defaults to this binary, so a drill rehearses the build that is deployed.
+- `--format` `text` or `json`.
+
+The exit code is 0 when nothing failed and 1 otherwise, which makes it usable from cron as a standing rehearsal:
+
+```bash
+wal-g restore-test --target-dir /mnt/drill --rto 2h --format json || alert "restore drill failed"
 ```
 
 ### ``delete garbage``

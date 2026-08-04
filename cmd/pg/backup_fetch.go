@@ -38,6 +38,12 @@ For information about pattern syntax view: https://golang.org/pkg/path/filepath/
 Separate parameters with comma. Use 'database' or 'database/namespace.table' as a parameter ('public' namespace can be omitted).  
 
 Sets reverse delta unpack & skip redundant tars options automatically. Always downloads system databases and tables.`
+
+	spaceMarginDescription = `Multiple of the backup's uncompressed size that must be free before the restore starts.`
+
+	skipSpaceCheckDescription = `Skip the free-space preflight and start extracting immediately.`
+
+	forceDescription = `Continue even when the preflight shows the restore will not fit.`
 )
 
 var fileMask string
@@ -51,6 +57,12 @@ var skipRedundantTars bool
 var fetchTargetUserData string
 
 var partialRestoreArgs []string
+
+var fetchSpaceMargin float64
+
+var fetchSkipSpaceCheck bool
+
+var fetchForce bool
 
 var backupFetchCmd = &cobra.Command{
 	Use: "backup-fetch destination_directory [backup_name | --target-user-data <data>]",
@@ -104,12 +116,18 @@ var backupFetchCmd = &cobra.Command{
 			extractProv = postgres.ExtractProviderImpl{}
 		}
 
+		spaceGuard := postgres.SpaceGuardOptions{
+			Margin: fetchSpaceMargin,
+			Skip:   fetchSkipSpaceCheck,
+			Force:  fetchForce,
+		}
+
 		var pgFetcher internal.Fetcher
 
 		if reverseDeltaUnpack {
-			pgFetcher = postgres.GetFetcherNew(args[0], fileMask, restoreSpec, skipRedundantTars, extractProv)
+			pgFetcher = postgres.GetFetcherNew(args[0], fileMask, restoreSpec, skipRedundantTars, extractProv, spaceGuard)
 		} else {
-			pgFetcher = postgres.GetFetcherOld(args[0], fileMask, restoreSpec, extractProv)
+			pgFetcher = postgres.GetFetcherOld(args[0], fileMask, restoreSpec, extractProv, spaceGuard)
 		}
 
 		internal.HandleBackupFetch(rootFolder, targetBackupSelector, pgFetcher)
@@ -162,6 +180,18 @@ func init() {
 	backupFetchCmd.Flags().StringVar(&targetStorage, "target-storage",
 
 		"", targetStorageDescription)
+
+	backupFetchCmd.Flags().Float64Var(&fetchSpaceMargin, "space-margin",
+
+		postgres.DefaultRestoreSpaceMargin, spaceMarginDescription)
+
+	backupFetchCmd.Flags().BoolVar(&fetchSkipSpaceCheck, "skip-space-check",
+
+		false, skipSpaceCheckDescription)
+
+	backupFetchCmd.Flags().BoolVar(&fetchForce, "force",
+
+		false, forceDescription)
 
 	Cmd.AddCommand(backupFetchCmd)
 }

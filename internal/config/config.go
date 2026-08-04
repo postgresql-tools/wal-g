@@ -197,6 +197,24 @@ const (
 
 	PgStopBackupTimeout = "WALG_STOP_BACKUP_TIMEOUT"
 
+	// RPOSetting is the most recent data loss tolerated, as a duration.
+
+	RPOSetting = "WALG_RPO"
+
+	// RTOSetting is the recovery time budget a restore drill is judged against.
+
+	RTOSetting = "WALG_RTO"
+
+	// RetentionWindowSetting is how far back a restore must remain possible.
+
+	RetentionWindowSetting = "WALG_RETENTION_WINDOW"
+
+	// RetentionCountSetting is the backup count the retention policy keeps, as
+
+	// passed to "delete retain".
+
+	RetentionCountSetting = "WALG_RETENTION_COUNT"
+
 	FailoverStorages = "WALG_FAILOVER_STORAGES"
 
 	FailoverStoragesCheck = "WALG_FAILOVER_STORAGES_CHECK"
@@ -925,6 +943,14 @@ var (
 		PgAliveCheckInterval: true,
 
 		PgStopBackupTimeout: true,
+
+		RPOSetting: true,
+
+		RTOSetting: true,
+
+		RetentionWindowSetting: true,
+
+		RetentionCountSetting: true,
 
 		FailoverStorages: true,
 

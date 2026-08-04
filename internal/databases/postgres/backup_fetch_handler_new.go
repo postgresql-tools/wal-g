@@ -16,9 +16,12 @@ func GetFetcherNew(dbDataDirectory, fileMask, restoreSpecPath string, skipRedund
 
 	extractProv ExtractProvider,
 
+	spaceGuard SpaceGuardOptions,
 ) internal.Fetcher {
 	return func(rootFolder storage.Folder, backup internal.Backup) {
 		pgBackup := ToPgBackup(backup)
+
+		GuardRestoreSpace(pgBackup, utility.ResolveSymlink(dbDataDirectory), spaceGuard)
 
 		filesToUnwrap, err := pgBackup.GetFilesToUnwrap(fileMask)
 
