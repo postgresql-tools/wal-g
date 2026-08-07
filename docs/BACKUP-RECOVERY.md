@@ -312,3 +312,53 @@ says otherwise.
   of an RTO that fetch throughput cannot predict.
 
 Full documentation: [PostgreSQL.md](PostgreSQL.md#restore-test).
+
+## Evidence for an audit: `compliance-report`
+
+`doctor`, `backup-verify`, `retention-validate`, `pitr-window`, and
+`restore-test` each answer one question on their own. `compliance-report` runs
+them and collects the answers into a single artifact — something to hand to
+an auditor or attach to a change record, rather than five separate command
+outputs to reassemble by hand.
+
+```bash
+# Default: doctor, backup-verify (Tier 1, LATEST), retention-validate,
+# pitr-window. restore-test is skipped (see below).
+wal-g compliance-report --format json
+
+# Include a real restore rehearsal in the evidence:
+wal-g compliance-report --format json --restore-test-target-dir /mnt/drill
+```
+
+**This is an evidence aggregator, not a certified compliance report.** It
+does not produce a SOC2 report — that requires an independent auditor's
+opinion — or a CMMC assessment — that requires a formal assessor. Each check
+is tagged with illustrative categories (e.g. "backup integrity", "data
+retention") to help orient a reader; these are starting points, not a vetted
+mapping to specific CMMC practices or SOC2 Trust Services Criteria. Review
+them with your compliance team before citing this report in an audit.
+
+Each check runs as its own `wal-g` process — the same invocation an operator
+would type by hand — with `--format json`. Its full JSON report is embedded
+verbatim under `detail`, so the report is complete evidence, not a lossy
+summary. Pass/fail per check comes from that process's exit code: 0 → `pass`,
+1 → `fail`; `backup-verify`'s documented exit code 2 ("could not complete" —
+storage unreachable, auth failure) is reported as its own `error` status
+rather than folded into `fail`.
+
+| Flag | Forwards to | Default |
+|---|---|---|
+| `--restore-test-target-dir` | `restore-test --target-dir` | unset — `restore-test` is `skipped` |
+| `--backup-name` | `backup-verify <name>` | unset — `backup-verify` checks `LATEST` |
+| `--sample` | `backup-verify --sample` | unset — Tier 1 only |
+| `--min-window` | `pitr-window --min-window` | unset |
+
+`retention-validate` is run with no flags forwarded: it already resolves
+`WALG_RPO`/`WALG_RETENTION_WINDOW`/`WALG_RETENTION_COUNT` from configuration
+on its own, so a plain `retention-validate --format json` reflects the same
+policy a cron job or CI gate would validate against.
+
+The exit code is 0 when every check that ran passed, 1 otherwise. A `skipped`
+check (currently only `restore-test`, when no target directory is given) does
+not affect it — the same rule `doctor` and `retention-validate` already use
+for warnings.

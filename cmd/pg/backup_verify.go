@@ -68,7 +68,7 @@ var (
 				backupName = args[0]
 			}
 
-			postgres.HandleBackupVerify(
+			exitCode := postgres.HandleBackupVerify(
 				storage.RootFolder(),
 				postgres.BackupVerifyOptions{
 					BackupName: backupName,
@@ -81,6 +81,8 @@ var (
 				},
 				os.Stdout,
 			)
+
+			os.Exit(exitCode)
 		},
 	}
 )
