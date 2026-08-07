@@ -19,7 +19,7 @@ This repository is a fork of the [original WAL-G project](https://github.com/wal
 
 - Fork point: upstream commit `7e9f9055` (2026-06-04). Upstream is active — latest release [v3.0.8](https://github.com/wal-g/wal-g/releases/tag/v3.0.8) (January 2026).
 - Fork releases: [4 releases, June–July 2026](https://github.com/postgresql-tools/wal-g/releases).
-- CI: unit tests with the race detector and all compression/encryption drivers ([unittests](.github/workflows/unittests.yml)), `go test -race ./...` ([test](.github/workflows/test.yml)), Windows-native build ([windows-native](.github/workflows/windows-native.yml)), Docker-based integration tests against PostgreSQL 10 and 18, MongoDB 7/8, Redis, MySQL, MariaDB, Greenplum, and etcd ([docker tests](.github/workflows/dockertests-par.yml)), golangci-lint, and license compliance ([license-check](.github/workflows/license-check.yml)). [View runs](https://github.com/postgresql-tools/wal-g/actions).
+- CI: unit tests with the race detector and all compression/encryption drivers ([unittests](.github/workflows/unittests.yml)), `go test -race ./...` ([test](.github/workflows/test.yml)), Windows-native build ([windows-native](.github/workflows/windows-native.yml)), Docker-based integration tests against PostgreSQL 10, 15, 16, 17, and 18 (see [compatibility matrix](docs/COMPATIBILITY.md)), MongoDB 7/8, Redis, MySQL, MariaDB, Greenplum, and etcd ([docker tests](.github/workflows/dockertests-par.yml)), golangci-lint, and license compliance ([license-check](.github/workflows/license-check.yml)). [View runs](https://github.com/postgresql-tools/wal-g/actions).
 - The documentation site is not published yet (see [Roadmap](#roadmap)).
 
 ## Fork additions
@@ -35,6 +35,7 @@ did not.
 - **`delete --explain`** — on every `delete` subcommand: what the delete would remove *and* the recovery window before and after it, with warnings for deletes that leave nothing restorable, open a gap, or strand backups in storage that can no longer be restored — [docs](docs/PostgreSQL.md#delete---explain)
 - **`retention-validate`** — checks that the retention policy you run delivers the RPO and retention window you declare, by running the real policy through the real delete handler and validating the window it would leave; catches the policy that passes today only because it has not been applied yet — [docs](docs/PostgreSQL.md#retention-validate)
 - **`restore-test`** — restores a backup into a scratch directory for real, times it, and judges it against declared RTO/RPO; refuses to touch `PGDATA` or any non-empty directory, and cleans up after itself. Optionally starts the restored cluster to measure WAL replay — [docs](docs/PostgreSQL.md#restore-test)
+- **`compliance-report`** — runs `doctor`, `backup-verify`, `retention-validate`, `pitr-window`, and (opt-in) `restore-test`, and collects their output into one pass/fail evidence report for an audit or change record. An evidence aggregator, not a certified SOC2/CMMC report — [docs](docs/BACKUP-RECOVERY.md#evidence-for-an-audit-compliance-report)
 - **Free-space preflight** — `backup-fetch` sizes a restore against the free space available to it and refuses one that demonstrably will not fit, instead of failing hours in with a half-written data directory — [docs](docs/PostgreSQL.md#free-space-preflight)
 - **Delta-chain depth limits** — `WALG_DELTA_MAX_STEPS` is enforced against the chain depth *walked from storage* rather than the count recorded in a sentinel, so a missing or stale count can no longer let a chain grow past its limit unnoticed; promotion to a full backup records why on the resulting backup — [docs](docs/PostgreSQL.md#delta-chain-depth-and-auto-promotion)
 - **Recovery objectives as config** — `WALG_RPO`, `WALG_RTO`, `WALG_RETENTION_WINDOW` and `WALG_RETENTION_COUNT`, so a cron job and a CI gate are judged against the same numbers — [docs](docs/PostgreSQL.md#configuration)
@@ -81,6 +82,7 @@ wal-g backup-fetch /tmp/restore LATEST
 
 - [Backup & Recovery](docs/BACKUP-RECOVERY.md)
 - [PostgreSQL](docs/PostgreSQL.md)
+- [PostgreSQL version compatibility matrix](docs/COMPATIBILITY.md)
 - [Storage backends](docs/STORAGES.md)
 - [Overview (upstream documentation)](docs/README.md)
 - [Monitoring (Prometheus exporter)](cmd/pg/exporter/README.md)
