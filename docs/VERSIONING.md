@@ -25,7 +25,8 @@ to avoid confusion with existing deployments that reference specific versions.
 | v0.14.2-lts.1 | (none) | LTS patch on fork |
 | v0.14.3-stable | (none) | Stability fixes on fork |
 | v0.15.0-stable | v2.x / v3.x | Fork-added features; unrelated to upstream v2/v3 |
-| v0.15.1 | v3.0.8 | Latest fork release |
+| v0.15.1 | v3.0.8 | |
+| v0.15.2 | v3.0.8 | Adds `compliance-report`; fixes `backup-verify` exit code. Latest fork release |
 
 **Important:** do not assume this fork's `v0.15.x` is compatible with upstream
 `v3.x`. They share a common ancestor at v0.14.1 but have diverged significantly

@@ -18,7 +18,7 @@ This repository is a fork of the [original WAL-G project](https://github.com/wal
 ## Status
 
 - Fork point: upstream commit `7e9f9055` (2026-06-04). Upstream is active — latest release [v3.0.8](https://github.com/wal-g/wal-g/releases/tag/v3.0.8) (January 2026).
-- Fork releases: [4 releases, June–July 2026](https://github.com/postgresql-tools/wal-g/releases).
+- Fork releases: [5 releases, June–August 2026](https://github.com/postgresql-tools/wal-g/releases).
 - CI: unit tests with the race detector and all compression/encryption drivers ([unittests](.github/workflows/unittests.yml)), `go test -race ./...` ([test](.github/workflows/test.yml)), Windows-native build ([windows-native](.github/workflows/windows-native.yml)), Docker-based integration tests against PostgreSQL 10, 15, 16, 17, and 18 (see [compatibility matrix](docs/COMPATIBILITY.md)), MongoDB 7/8, Redis, MySQL, MariaDB, Greenplum, and etcd ([docker tests](.github/workflows/dockertests-par.yml)), golangci-lint, and license compliance ([license-check](.github/workflows/license-check.yml)). [View runs](https://github.com/postgresql-tools/wal-g/actions).
 - The documentation site is not published yet (see [Roadmap](#roadmap)).
 
