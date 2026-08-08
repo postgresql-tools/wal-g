@@ -35,7 +35,7 @@ jobs:
           version: v2.12
       - name: Upload SARIF report
         if: failure() || success()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: golangci-lint.sarif
           category: golangci-lint
