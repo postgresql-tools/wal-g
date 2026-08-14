@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/wal-g/tracelog"
 
 	"github.com/lateos-ai/wal-g/pkg/neon"
@@ -37,7 +38,11 @@ const (
 const (
 	DefaultNeonRole     = "neondb_owner"
 	DefaultNeonDatabase = "neondb"
-	DefaultSourceDB     = "postgres"
+
+	// MaintenanceDB is the database every cluster has and almost nobody keeps
+	// data in. It is the connection target for asking the restored cluster what
+	// it holds, and the last-resort source when it holds nothing else.
+	MaintenanceDB = "postgres"
 )
 
 // NeonClient is the slice of the Neon control plane a drill uses. It is an
@@ -79,7 +84,8 @@ type NeonDrillOptions struct {
 	Role     string
 	Database string
 
-	// SourceDatabase is the database dumped out of the restored cluster.
+	// SourceDatabase is the database dumped out of the restored cluster. Empty
+	// means ask the cluster: see resolveSourceDatabase.
 	SourceDatabase string
 
 	// PgDumpPath and PsqlPath are the client binaries used for the transfer.
@@ -97,6 +103,10 @@ type NeonDrillReport struct {
 	NeonProjectID  string `json:"neon_project_id,omitempty"`
 	NeonBranchID   string `json:"neon_branch_id,omitempty"`
 	NeonBranchName string `json:"neon_branch_name,omitempty"`
+
+	// SourceDatabase is the database actually dumped, which is worth recording
+	// because the drill usually works it out rather than being told.
+	SourceDatabase string `json:"source_database,omitempty"`
 
 	// LoadSeconds is the logical dump-and-load, reported separately because it
 	// is not part of the recovery being budgeted. See rtoPhase.
@@ -338,6 +348,20 @@ func runNeonLoadPhase(report *NeonDrillReport, opts *NeonDrillOptions, client Ne
 
 	ctx := context.Background()
 
+	sourceDB, fellBack, err := resolveSourceDatabase(ctx, opts)
+	if err != nil {
+		phase.Status = DoctorFail
+		phase.Summary = "could not decide which database to dump"
+		phase.Detail = err.Error()
+		phase.Remedy = "Name the database with --source-database or WALG_NEON_SOURCE_DATABASE."
+		report.add(phase)
+
+		return
+	}
+
+	opts.SourceDatabase = sourceDB
+	report.SourceDatabase = sourceDB
+
 	uri, err := client.ConnectionURI(ctx, branch.ID, opts.Database, opts.Role)
 	if err != nil {
 		phase.Status = DoctorFail
@@ -383,9 +407,114 @@ func runNeonLoadPhase(report *NeonDrillReport, opts *NeonDrillOptions, client Ne
 	phase.Summary = fmt.Sprintf("loaded %s into %s in %s",
 		formatBytes(transferred), branch.Name, formatDuration(elapsed))
 	phase.Detail = fmt.Sprintf("dumped %s from the restored cluster on port %d",
-		opts.SourceDatabase, opts.Port)
+		sourceDB, opts.Port)
+
+	// A cluster with nothing but the maintenance database almost certainly means
+	// the drill loaded nothing. That is a warning, not a pass: a green drill
+	// that moved an empty database is exactly the false assurance this command
+	// exists to prevent.
+	if fellBack {
+		phase.Status = DoctorWarn
+		phase.Summary = fmt.Sprintf("loaded %s into %s, but the restored cluster holds no user database",
+			formatBytes(transferred), branch.Name)
+		phase.Remedy = "Check the backup really contains the database you expect. " +
+			"Name it with --source-database if it is called something unusual."
+	}
 
 	report.add(phase)
+}
+
+// resolveSourceDatabase decides which database to dump out of the restored
+// cluster.
+//
+// Guessing a name here is how a drill ends up loading an empty database and
+// reporting success, so it asks the cluster instead of assuming. The cluster is
+// running by this point - the replay phase started it - so the catalog is the
+// authoritative answer to "what did we just restore".
+func resolveSourceDatabase(ctx context.Context, opts *NeonDrillOptions) (name string, fallback bool, err error) {
+	// An explicit choice is never second-guessed, and skipping the query keeps
+	// the drill working even if the catalog cannot be read.
+	if opts.SourceDatabase != "" {
+		return opts.SourceDatabase, false, nil
+	}
+
+	available, err := listRestoredDatabases(ctx, opts.Port)
+	if err != nil {
+		return "", false, fmt.Errorf("could not ask the restored cluster which databases it holds: %w", err)
+	}
+
+	return chooseSourceDatabase(available)
+}
+
+// listRestoredDatabases returns the connectable, non-template databases in the
+// restored cluster.
+//
+// It builds an explicit DSN rather than going through Connect(), which falls
+// back to localhost:5432 on failure - and would silently query the live cluster
+// instead of the restored one.
+func listRestoredDatabases(ctx context.Context, port int) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	dsn := fmt.Sprintf("host=127.0.0.1 port=%d dbname=%s connect_timeout=10", port, MaintenanceDB)
+
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close(ctx)
+
+	rows, err := conn.Query(ctx,
+		"SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY datname")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+
+	for rows.Next() {
+		var name string
+
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+
+		names = append(names, name)
+	}
+
+	return names, rows.Err()
+}
+
+// chooseSourceDatabase picks the one database worth dumping, or explains why it
+// cannot.
+//
+// One user database is the common case and is chosen silently. Several is
+// genuinely ambiguous - a Neon branch holds one database, so the drill cannot
+// load them all without inventing a policy - and guessing there would be worse
+// than asking.
+func chooseSourceDatabase(available []string) (name string, fallback bool, err error) {
+	candidates := make([]string, 0, len(available))
+
+	for _, database := range available {
+		if database != MaintenanceDB {
+			candidates = append(candidates, database)
+		}
+	}
+
+	switch len(candidates) {
+	case 0:
+		// Nothing but the maintenance database. Dumping it is almost certainly
+		// pointless, but it is a truthful answer and the caller says so.
+		return MaintenanceDB, true, nil
+	case 1:
+		return candidates[0], false, nil
+	default:
+		return "", false, fmt.Errorf(
+			"the restored cluster holds %d databases (%s) and a Neon branch holds one: "+
+				"choose with --source-database",
+			len(candidates), strings.Join(candidates, ", "))
+	}
 }
 
 // runDumpAndLoad streams pg_dump into psql and returns how many bytes crossed.
@@ -618,9 +747,8 @@ func applyNeonDefaults(opts *NeonDrillOptions) {
 		opts.Database = DefaultNeonDatabase
 	}
 
-	if opts.SourceDatabase == "" {
-		opts.SourceDatabase = DefaultSourceDB
-	}
+	// SourceDatabase is deliberately not defaulted: empty means "ask the
+	// restored cluster", which is decided once it is running.
 
 	if opts.PgDumpPath == "" {
 		opts.PgDumpPath = "pg_dump"

@@ -243,6 +243,12 @@ const (
 
 	NeonDatabaseSetting = "WALG_NEON_DATABASE"
 
+	// NeonSourceDatabaseSetting is the database dumped out of the restored
+
+	// cluster. Unset means ask the cluster which database it holds.
+
+	NeonSourceDatabaseSetting = "WALG_NEON_SOURCE_DATABASE"
+
 	FailoverStorages = "WALG_FAILOVER_STORAGES"
 
 	FailoverStoragesCheck = "WALG_FAILOVER_STORAGES_CHECK"
@@ -991,6 +997,8 @@ var (
 		NeonRoleSetting: true,
 
 		NeonDatabaseSetting: true,
+
+		NeonSourceDatabaseSetting: true,
 
 		FailoverStorages: true,
 

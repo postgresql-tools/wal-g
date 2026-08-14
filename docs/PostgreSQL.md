@@ -64,7 +64,7 @@ Once the limit is reached, the next `backup-push` is **automatically promoted to
 
 The recovery objectives this fork judges against: the most recent data loss tolerated (`WALG_RPO`), the recovery time budget (`WALG_RTO`), how far back a restore must remain possible (`WALG_RETENTION_WINDOW`), and the backup count the retention policy keeps (`WALG_RETENTION_COUNT`). Durations accept a `d` suffix for days, so a 30-day window is `30d` rather than `720h`. Used by [retention-validate](#retention-validate) and [restore-test](#restore-test).
 
-* `WALG_NEON_API_KEY`, `WALG_NEON_PROJECT_ID`, `WALG_NEON_PARENT_BRANCH`, `WALG_NEON_ROLE`, `WALG_NEON_DATABASE`, `WALG_NEON_API_ENDPOINT`
+* `WALG_NEON_API_KEY`, `WALG_NEON_PROJECT_ID`, `WALG_NEON_PARENT_BRANCH`, `WALG_NEON_ROLE`, `WALG_NEON_DATABASE`, `WALG_NEON_SOURCE_DATABASE`, `WALG_NEON_API_ENDPOINT`
 
 Where [neon-drill](#neon-drill) puts the data it recovers. `WALG_NEON_API_KEY` and `WALG_NEON_PROJECT_ID` are the minimum; the rest have defaults. The API key is treated as a secret — it is redacted from debug output and never appears in a drill report. Note these configure a *destination for a restored copy*, not a storage backend: Neon cannot hold wal-g backups.
 
@@ -910,7 +910,28 @@ Drill passed. Scratch directory removed.
 | `WALG_NEON_PARENT_BRANCH` | Branch to fork from. Default: the project's default branch. |
 | `WALG_NEON_ROLE` | Role to load as. Default: `neondb_owner`. |
 | `WALG_NEON_DATABASE` | Database to load into. Default: `neondb`. |
+| `WALG_NEON_SOURCE_DATABASE` | Database to dump out of the restored cluster. Default: ask the cluster (see below). |
 | `WALG_NEON_API_ENDPOINT` | Control plane URL. For testing against a stub. |
+
+**Which database gets dumped.** By default the drill does not guess: once the restored cluster is running it queries `pg_database` and picks the single non-template, connectable database that is not `postgres`. Guessing a name is how a drill ends up dumping an empty database and reporting success, so the three outcomes are all explicit:
+
+- **one user database** — chosen silently, and named in the `neon-load` detail line;
+- **several** — the drill stops and lists them, because a Neon branch holds one database and picking for you could load the wrong data under a green verdict:
+
+  ```
+  [FAIL] neon-load      could not decide which database to dump
+         the restored cluster holds 2 databases (billing, orders) and a Neon branch holds one: choose with --source-database
+         -> Name the database with --source-database or WALG_NEON_SOURCE_DATABASE.
+  ```
+
+- **none but `postgres`** — the drill proceeds but the phase **warns** rather than passing, since it has almost certainly moved an empty database:
+
+  ```
+  [WARN] neon-load      loaded 12 KiB into walg-drill-20260814T090000Z, but the restored cluster holds no user database
+         -> Check the backup really contains the database you expect.
+  ```
+
+An explicit `--source-database` or `WALG_NEON_SOURCE_DATABASE` is never second-guessed, and skips the query entirely.
 
 **Safety.** The scratch-directory rules are the same as `restore-test` — never `PGDATA`, never a non-empty directory. On top of that:
 
@@ -933,7 +954,7 @@ Flags, beyond those shared with `restore-test`:
 - `--branch-name` Name the branch. Must keep the `walg-drill-` prefix or cleanup will refuse to remove it.
 - `--keep-branch` Leave the branch in place. It stays billable.
 - `--neon-role`, `--neon-database` Where the dump is loaded.
-- `--source-database` Which database to dump out of the restored cluster. Default `postgres`.
+- `--source-database` Which database to dump out of the restored cluster. Default: resolved from the cluster, as described above.
 - `--pg-dump`, `--psql` Paths to the client binaries.
 
 Note there is no `--start-postgres`: the dump reads from the restored cluster, so starting it is mandatory rather than optional.

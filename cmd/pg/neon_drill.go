@@ -88,7 +88,8 @@ The exit code is 0 when nothing failed and 1 otherwise.`
 	neonDrillDatabaseDescription = "Database to load into on the branch. Default: WALG_NEON_DATABASE."
 
 	neonDrillSourceDBFlag        = "source-database"
-	neonDrillSourceDBDescription = "Database to dump out of the restored cluster."
+	neonDrillSourceDBDescription = "Database to dump out of the restored cluster. " +
+		"Default: ask the cluster, and use its single user database."
 
 	neonDrillPgDumpFlag        = "pg-dump"
 	neonDrillPgDumpDescription = "Path to pg_dump. Must be at least as new as the restored cluster."
@@ -189,6 +190,12 @@ func runNeonDrill(_ *cobra.Command, args []string) {
 		opts.Database = viper.GetString(conf.NeonDatabaseSetting)
 	}
 
+	// Left empty on purpose when neither is set: the drill then asks the
+	// restored cluster which database it holds.
+	if opts.SourceDatabase == "" {
+		opts.SourceDatabase = viper.GetString(conf.NeonSourceDatabaseSetting)
+	}
+
 	var err error
 
 	opts.RTO, err = resolveDurationObjective(neonDrillRTO, conf.RTOSetting)
@@ -225,7 +232,7 @@ func init() {
 		neonDrillKeepBranchDescription)
 	neonDrillCmd.Flags().StringVar(&neonDrillRole, neonDrillRoleFlag, "", neonDrillRoleDescription)
 	neonDrillCmd.Flags().StringVar(&neonDrillDatabase, neonDrillDatabaseFlag, "", neonDrillDatabaseDescription)
-	neonDrillCmd.Flags().StringVar(&neonDrillSourceDB, neonDrillSourceDBFlag, postgres.DefaultSourceDB,
+	neonDrillCmd.Flags().StringVar(&neonDrillSourceDB, neonDrillSourceDBFlag, "",
 		neonDrillSourceDBDescription)
 	neonDrillCmd.Flags().StringVar(&neonDrillPgDump, neonDrillPgDumpFlag, "pg_dump", neonDrillPgDumpDescription)
 	neonDrillCmd.Flags().StringVar(&neonDrillPsql, neonDrillPsqlFlag, "psql", neonDrillPsqlDescription)

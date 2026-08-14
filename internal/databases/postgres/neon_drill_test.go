@@ -324,6 +324,81 @@ func TestReadClusterMajorVersion_ReportsAMissingFile(t *testing.T) {
 	}
 }
 
+// Guessing the database name is how a drill loads nothing and reports success,
+// so the common case - one user database next to the maintenance one - must be
+// picked without being told.
+func TestChooseSourceDatabase_PicksTheSingleUserDatabase(t *testing.T) {
+	name, fallback, err := chooseSourceDatabase([]string{MaintenanceDB, "orders"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if name != "orders" {
+		t.Fatalf("chose %q, want orders", name)
+	}
+
+	if fallback {
+		t.Fatal("choosing a real user database is not a fallback")
+	}
+}
+
+// A Neon branch holds one database. Several candidates is genuinely ambiguous,
+// and picking one silently would load the wrong data under a green verdict.
+func TestChooseSourceDatabase_RefusesToGuessBetweenSeveral(t *testing.T) {
+	_, _, err := chooseSourceDatabase([]string{MaintenanceDB, "orders", "billing"})
+	if err == nil {
+		t.Fatal("expected several user databases to be refused")
+	}
+
+	// The operator has to be told which ones, or they cannot choose.
+	for _, name := range []string{"orders", "billing"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("error should name %q, got: %v", name, err)
+		}
+	}
+
+	if !strings.Contains(err.Error(), "--source-database") {
+		t.Errorf("error should say how to choose, got: %v", err)
+	}
+}
+
+// Nothing but the maintenance database means the drill is about to move an
+// empty database. It still proceeds, but the caller is told so it can warn.
+func TestChooseSourceDatabase_FallsBackToMaintenanceDB(t *testing.T) {
+	name, fallback, err := chooseSourceDatabase([]string{MaintenanceDB})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if name != MaintenanceDB {
+		t.Fatalf("chose %q, want %s", name, MaintenanceDB)
+	}
+
+	if !fallback {
+		t.Fatal("falling back to the maintenance database must be reported as such")
+	}
+}
+
+// An explicit choice is never second-guessed, and must not need the cluster to
+// be reachable to be honored.
+func TestResolveSourceDatabase_HonorsAnExplicitChoiceWithoutQuerying(t *testing.T) {
+	// Port 1 is not listening. If this tried to query, it would fail.
+	opts := &NeonDrillOptions{SourceDatabase: "chosen_by_hand", RestoreDrillOptions: RestoreDrillOptions{Port: 1}}
+
+	name, fallback, err := resolveSourceDatabase(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if name != "chosen_by_hand" {
+		t.Fatalf("resolved %q, want chosen_by_hand", name)
+	}
+
+	if fallback {
+		t.Fatal("an explicit choice is not a fallback")
+	}
+}
+
 // The Neon load is a transfer, not a recovery. Timing it against the RTO would
 // fail the drill for a reason unrelated to backup health.
 func TestApplyNeonDefaults_ForcesTheClusterToStart(t *testing.T) {
@@ -340,5 +415,11 @@ func TestApplyNeonDefaults_ForcesTheClusterToStart(t *testing.T) {
 
 	if opts.PgDumpPath != "pg_dump" || opts.PsqlPath != "psql" {
 		t.Fatalf("client binary defaults not applied: %+v", opts)
+	}
+
+	// Not defaulted on purpose: empty means "ask the restored cluster", and
+	// defaulting it here would reinstate the guess this replaced.
+	if opts.SourceDatabase != "" {
+		t.Fatalf("SourceDatabase = %q, want empty so it is resolved from the cluster", opts.SourceDatabase)
 	}
 }
