@@ -64,6 +64,10 @@ Once the limit is reached, the next `backup-push` is **automatically promoted to
 
 The recovery objectives this fork judges against: the most recent data loss tolerated (`WALG_RPO`), the recovery time budget (`WALG_RTO`), how far back a restore must remain possible (`WALG_RETENTION_WINDOW`), and the backup count the retention policy keeps (`WALG_RETENTION_COUNT`). Durations accept a `d` suffix for days, so a 30-day window is `30d` rather than `720h`. Used by [retention-validate](#retention-validate) and [restore-test](#restore-test).
 
+* `WALG_NEON_API_KEY`, `WALG_NEON_PROJECT_ID`, `WALG_NEON_PARENT_BRANCH`, `WALG_NEON_ROLE`, `WALG_NEON_DATABASE`, `WALG_NEON_API_ENDPOINT`
+
+Where [neon-drill](#neon-drill) puts the data it recovers. `WALG_NEON_API_KEY` and `WALG_NEON_PROJECT_ID` are the minimum; the rest have defaults. The API key is treated as a secret — it is redacted from debug output and never appears in a drill report. Note these configure a *destination for a restored copy*, not a storage backend: Neon cannot hold wal-g backups.
+
 * `WALG_DELTA_ORIGIN`
 
 To configure base for next delta backup (only if `WALG_DELTA_MAX_STEPS` is not exceeded). `WALG_DELTA_ORIGIN` can be LATEST (chaining increments), LATEST_FULL (for bases where volatile part is compact and chaining has no meaning - deltas overwrite each other). Defaults to LATEST.
@@ -854,6 +858,102 @@ The exit code is 0 when nothing failed and 1 otherwise, which makes it usable fr
 ```bash
 wal-g restore-test --target-dir /mnt/drill --rto 2h --format json || alert "restore drill failed"
 ```
+
+### ``neon-drill``
+
+Rehearses a restore like `restore-test`, then leaves the recovered data in a throwaway [Neon](https://neon.tech) branch you can actually connect to and query.
+
+```bash
+wal-g neon-drill --target-dir /mnt/drill --rto 2h --rpo 1h
+```
+
+**This is a two-stage drill, and it has to be.** A wal-g physical backup cannot be restored into Neon directly: Neon stores pages in its own pageserver, so there is no data directory to write and no replication protocol to stream into. Neither `backup-fetch` nor `backup-push` can address it. What happens instead:
+
+1. `backup-fetch` restores the backup into a scratch directory, for real;
+2. the restored cluster is started and replays WAL to consistency;
+3. `pg_dump` streams that cluster into a newly created Neon branch;
+4. the branch is deleted, unless `--keep-branch`.
+
+The physical restore is still the thing being tested. The branch is what it leaves behind.
+
+```
+wal-g neon-drill
+
+Restoring  base_000000010000000000000014 into /mnt/drill
+Loading    into Neon branch walg-drill-20260814T090000Z
+
+[ OK ] neon-auth      the Neon project is reachable
+[ OK ] target-dir     /mnt/drill is empty and is not the live data directory
+[ OK ] space          412 GiB free for a restore of about 168 GiB
+[ OK ] fetch          168 GiB restored in 41m18s
+       69 MiB/s
+[ OK ] replay         reached consistency in 3m2s (port 5433)
+[ OK ] neon-branch    created branch walg-drill-20260814T090000Z (br-cool-frost-12345)
+[ OK ] neon-load      loaded 22 GiB into walg-drill-20260814T090000Z in 18m4s
+       dumped postgres from the restored cluster on port 5433
+[ OK ] neon-cleanup   branch removed
+[ OK ] rto            recovery took 44m20s of the 2h0m budget (fetch and replay)
+[ OK ] rpo            restorable to within 8m, inside the 1h0m RPO
+
+9 passed, 0 warned, 0 failed, 0 skipped
+Drill passed. Scratch directory removed.
+```
+
+**The Neon load is not part of the RTO.** Stage 3 is a logical copy, not a recovery: it is bounded by dump-and-load throughput, not by how fast your backups restore. Counting it against a recovery budget would fail the drill for a reason that has nothing to do with backup health, so `rto` covers `fetch` and `replay` only and `neon-load` is timed separately (`neon_load_seconds` in the JSON report).
+
+**Configuration.** Credentials come from the environment or config file:
+
+| Setting | Meaning |
+| --- | --- |
+| `WALG_NEON_API_KEY` | Neon API key. Secret: never logged, never written to the report. |
+| `WALG_NEON_PROJECT_ID` | Project the branch is created in. |
+| `WALG_NEON_PARENT_BRANCH` | Branch to fork from. Default: the project's default branch. |
+| `WALG_NEON_ROLE` | Role to load as. Default: `neondb_owner`. |
+| `WALG_NEON_DATABASE` | Database to load into. Default: `neondb`. |
+| `WALG_NEON_API_ENDPOINT` | Control plane URL. For testing against a stub. |
+
+**Safety.** The scratch-directory rules are the same as `restore-test` — never `PGDATA`, never a non-empty directory. On top of that:
+
+- the branch is deleted on **every** exit path, including `SIGINT` and `SIGTERM`, because a leaked branch is a running compute endpoint somebody keeps paying for;
+- only branches named with the `walg-drill-` prefix are ever deleted, so a bug in cleanup cannot destroy a branch you created;
+- the branch password reaches `psql` through the environment, never through `argv`, where every process on the host could read it;
+- `neon-auth` runs **first**, so bad credentials fail in seconds rather than after an hour of restoring a backup that has nowhere to go.
+
+`pg_dump` must be at least as new as the restored cluster, or it fails partway through on a catalog it does not understand. The drill checks this up front and says so:
+
+```
+[FAIL] neon-load      the pg_dump on this host cannot dump the restored cluster
+       pg_dump is version 15 but the restored cluster is version 16
+       -> Use a pg_dump at least as new as the restored cluster, via --pg-dump.
+```
+
+Flags, beyond those shared with `restore-test`:
+
+- `--neon-project`, `--neon-parent-branch` Override the configured project and parent.
+- `--branch-name` Name the branch. Must keep the `walg-drill-` prefix or cleanup will refuse to remove it.
+- `--keep-branch` Leave the branch in place. It stays billable.
+- `--neon-role`, `--neon-database` Where the dump is loaded.
+- `--source-database` Which database to dump out of the restored cluster. Default `postgres`.
+- `--pg-dump`, `--psql` Paths to the client binaries.
+
+Note there is no `--start-postgres`: the dump reads from the restored cluster, so starting it is mandatory rather than optional.
+
+### ``neon-branches``
+
+Lists the Neon branches left behind by `neon-drill`. A drill cleans up after itself, but a host that was powered off mid-drill cannot, so an empty list is the expected steady state.
+
+```bash
+wal-g neon-branches
+```
+
+```
+NAME                         ID         CREATED               AGE
+walg-drill-20260814T090000Z  br-drill1  2026-08-14T09:00:00Z  6h34m0s
+
+1 drill branch(es) still present. Each one is a billable compute endpoint.
+```
+
+Only branches carrying the `walg-drill-` prefix are listed; your own branches are never shown and never touched. This command talks only to the Neon control plane, so it needs no `WALG_*_PREFIX` storage configuration.
 
 ### ``delete garbage``
 

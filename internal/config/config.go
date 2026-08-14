@@ -215,6 +215,34 @@ const (
 
 	RetentionCountSetting = "WALG_RETENTION_COUNT"
 
+	// NeonAPIKeySetting authenticates against the Neon control plane. It is a
+
+	// secret: it must never be logged or included in a report.
+
+	NeonAPIKeySetting = "WALG_NEON_API_KEY"
+
+	// NeonProjectIDSetting is the Neon project a drill creates its branch in.
+
+	NeonProjectIDSetting = "WALG_NEON_PROJECT_ID"
+
+	// NeonParentBranchSetting is the branch to fork from. Empty means the
+
+	// project's default branch.
+
+	NeonParentBranchSetting = "WALG_NEON_PARENT_BRANCH"
+
+	// NeonAPIEndpointSetting overrides the control plane URL, for testing.
+
+	NeonAPIEndpointSetting = "WALG_NEON_API_ENDPOINT"
+
+	// NeonRoleSetting is the role the restored data is loaded as.
+
+	NeonRoleSetting = "WALG_NEON_ROLE"
+
+	// NeonDatabaseSetting is the database the restored data is loaded into.
+
+	NeonDatabaseSetting = "WALG_NEON_DATABASE"
+
 	FailoverStorages = "WALG_FAILOVER_STORAGES"
 
 	FailoverStoragesCheck = "WALG_FAILOVER_STORAGES_CHECK"
@@ -952,6 +980,18 @@ var (
 
 		RetentionCountSetting: true,
 
+		NeonAPIKeySetting: true,
+
+		NeonProjectIDSetting: true,
+
+		NeonParentBranchSetting: true,
+
+		NeonAPIEndpointSetting: true,
+
+		NeonRoleSetting: true,
+
+		NeonDatabaseSetting: true,
+
 		FailoverStorages: true,
 
 		FailoverStoragesCheck: true,
@@ -1215,6 +1255,8 @@ var (
 		SwiftOsPassword: true,
 
 		MongoDBExtraInternalDatabases: true,
+
+		NeonAPIKeySetting: true,
 	}
 
 	complexSettings = map[string]bool{
