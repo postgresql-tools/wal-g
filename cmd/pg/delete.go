@@ -274,18 +274,19 @@ func init() {
 
 	deleteCmd.PersistentFlags().StringVar(&deleteFormat, deleteFormatFlag, "text", deleteFormatDescription)
 
-	// --explain and --confirm ask for opposite things. Silently letting one win
-	// would mean either deleting when a preview was wanted, or not deleting when
-	// a delete was wanted, and only one of those is recoverable.
 	deleteCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// Cobra runs only the nearest PersistentPreRun in the chain. Defining one
+		// here shadows the root's, which is what asserts the storage settings and
+		// applies the WAL/block size overrides, so call it through explicitly.
+		Cmd.PersistentPreRun(cmd, args)
+
+		// --explain and --confirm ask for opposite things. Silently letting one win
+		// would mean either deleting when a preview was wanted, or not deleting when
+		// a delete was wanted, and only one of those is recoverable.
 		if deleteExplain && confirmed {
 			return errors.New("--explain and --confirm cannot be combined: --explain never deletes anything")
 		}
 
-		if deleteFormat != "text" && deleteFormat != "json" {
-			return errors.New("--format must be either text or json")
-		}
-
-		return nil
+		return postgres.ValidateReportFormat(deleteFormat)
 	}
 }

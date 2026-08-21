@@ -4,9 +4,8 @@ package pg
 
 import (
 	"context"
-	// Aliased: package pg already has a bool named json (see backup_list.go).
-	encjson "encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"text/tabwriter"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/wal-g/tracelog"
 
 	conf "github.com/lateos-ai/wal-g/internal/config"
+	"github.com/lateos-ai/wal-g/internal/databases/postgres"
 	"github.com/lateos-ai/wal-g/pkg/neon"
 	"github.com/lateos-ai/wal-g/utility"
 )
@@ -56,6 +56,8 @@ var (
 )
 
 func runNeonBranches(_ *cobra.Command, _ []string) {
+	tracelog.ErrorLogger.FatalOnError(postgres.ValidateReportFormat(neonBranchesFormat))
+
 	projectID := neonBranchesProject
 	if projectID == "" {
 		projectID = viper.GetString(conf.NeonProjectIDSetting)
@@ -71,26 +73,18 @@ func runNeonBranches(_ *cobra.Command, _ []string) {
 	branches, err := client.ListDrillBranches(context.Background())
 	tracelog.ErrorLogger.FatalOnError(err)
 
-	if neonBranchesFormat == "json" {
-		data, err := encjson.MarshalIndent(branches, "", "  ")
-		tracelog.ErrorLogger.FatalOnError(err)
-
-		fmt.Fprintln(os.Stdout, string(data))
-
-		return
-	}
-
-	writeNeonBranchesText(branches)
+	tracelog.ErrorLogger.FatalOnError(postgres.WriteReport(neonBranchesFormat, branches,
+		func(w io.Writer) { writeNeonBranchesText(branches, w) }, os.Stdout))
 }
 
-func writeNeonBranchesText(branches []neon.Branch) {
+func writeNeonBranchesText(branches []neon.Branch, output io.Writer) {
 	if len(branches) == 0 {
-		fmt.Fprintln(os.Stdout, "No wal-g drill branches. Nothing is being paid for.")
+		fmt.Fprintln(output, "No wal-g drill branches. Nothing is being paid for.")
 
 		return
 	}
 
-	writer := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	writer := tabwriter.NewWriter(output, 0, 0, 2, ' ', 0)
 
 	fmt.Fprintln(writer, "NAME\tID\tCREATED\tAGE")
 
@@ -110,7 +104,7 @@ func writeNeonBranchesText(branches []neon.Branch) {
 
 	_ = writer.Flush()
 
-	fmt.Fprintf(os.Stdout, "\n%d drill branch(es) still present. Each one is a billable compute endpoint.\n",
+	fmt.Fprintf(output, "\n%d drill branch(es) still present. Each one is a billable compute endpoint.\n",
 		len(branches))
 }
 

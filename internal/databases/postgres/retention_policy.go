@@ -3,7 +3,6 @@
 package postgres
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -419,18 +418,7 @@ func describeGaps(gaps []PITRGap) string {
 
 // WriteRetentionReport renders a validation report.
 func WriteRetentionReport(report *RetentionReport, format string, output io.Writer) error {
-	if format == "json" {
-		data, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = output.Write(append(data, '\n'))
-		return err
-	}
-
-	writeRetentionText(report, output)
-
-	return nil
+	return WriteReport(format, report, func(w io.Writer) { writeRetentionText(report, w) }, output)
 }
 
 func writeRetentionText(report *RetentionReport, output io.Writer) {

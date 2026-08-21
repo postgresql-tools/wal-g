@@ -4,7 +4,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -711,18 +710,7 @@ func finishDrill(report *RestoreDrillReport, opts RestoreDrillOptions,
 
 // WriteRestoreDrillReport renders a drill report.
 func WriteRestoreDrillReport(report *RestoreDrillReport, format string, output io.Writer) error {
-	if format == "json" {
-		data, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = output.Write(append(data, '\n'))
-		return err
-	}
-
-	writeRestoreDrillText(report, output)
-
-	return nil
+	return WriteReport(format, report, func(w io.Writer) { writeRestoreDrillText(report, w) }, output)
 }
 
 func writeRestoreDrillText(report *RestoreDrillReport, output io.Writer) {

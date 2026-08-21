@@ -4,7 +4,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -804,20 +803,7 @@ func finishNeonDrill(report *NeonDrillReport, opts *NeonDrillOptions,
 
 // WriteNeonDrillReport renders a Neon drill report.
 func WriteNeonDrillReport(report *NeonDrillReport, format string, output io.Writer) error {
-	if format == "json" {
-		data, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			return err
-		}
-
-		_, err = output.Write(append(data, '\n'))
-
-		return err
-	}
-
-	writeNeonDrillText(report, output)
-
-	return nil
+	return WriteReport(format, report, func(w io.Writer) { writeNeonDrillText(report, w) }, output)
 }
 
 func writeNeonDrillText(report *NeonDrillReport, output io.Writer) {
