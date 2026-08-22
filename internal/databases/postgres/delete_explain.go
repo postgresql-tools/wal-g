@@ -3,7 +3,6 @@
 package postgres
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -295,18 +294,7 @@ func formatExplainTime(t time.Time) string {
 // WriteExplanation renders the report. Text is for a person deciding whether to
 // add --confirm; JSON is for a pipeline deciding the same thing.
 func WriteExplanation(explanation *DeleteExplanation, format string, output io.Writer) error {
-	if format == "json" {
-		data, err := json.MarshalIndent(explanation, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = output.Write(append(data, '\n'))
-		return err
-	}
-
-	writeExplanationText(explanation, output)
-
-	return nil
+	return WriteReport(format, explanation, func(w io.Writer) { writeExplanationText(explanation, w) }, output)
 }
 
 func writeExplanationText(explanation *DeleteExplanation, output io.Writer) {

@@ -144,6 +144,8 @@ var (
 )
 
 func runNeonDrill(_ *cobra.Command, args []string) {
+	tracelog.ErrorLogger.FatalOnError(postgres.ValidateReportFormat(neonDrillFormat))
+
 	if len(args) == 1 {
 		neonDrillBackupName = args[0]
 	}

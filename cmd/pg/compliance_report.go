@@ -19,6 +19,7 @@ import (
 	"github.com/wal-g/tracelog"
 
 	conf "github.com/lateos-ai/wal-g/internal/config"
+	"github.com/lateos-ai/wal-g/internal/databases/postgres"
 	"github.com/lateos-ai/wal-g/utility"
 )
 
@@ -140,6 +141,8 @@ type complianceCheckRun struct {
 }
 
 func runComplianceReport(cmd *cobra.Command, args []string) {
+	tracelog.ErrorLogger.FatalOnError(postgres.ValidateReportFormat(complianceReportFormat))
+
 	self, err := os.Executable()
 	tracelog.ErrorLogger.FatalfOnError("Could not determine this binary's path: %v", err)
 
@@ -301,19 +304,10 @@ func complianceReportPass(checks []ComplianceCheckResult) bool {
 }
 
 func writeComplianceReport(report *ComplianceReport, format string, output io.Writer) {
-	if format == "json" {
-		data, err := encjson.MarshalIndent(report, "", "  ")
-		if err != nil {
-			fmt.Fprintf(output, `{"error":%q}`, err.Error())
-			return
-		}
-		if _, err := output.Write(append(data, '\n')); err != nil {
-			tracelog.ErrorLogger.Printf("failed to write JSON output: %v", err)
-		}
-		return
+	err := postgres.WriteReport(format, report, func(w io.Writer) { writeComplianceReportText(report, w) }, output)
+	if err != nil {
+		tracelog.ErrorLogger.Printf("Failed to write the report: %v\n", err)
 	}
-
-	writeComplianceReportText(report, output)
 }
 
 func writeComplianceReportText(report *ComplianceReport, output io.Writer) {

@@ -5,7 +5,6 @@ package postgres
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -123,7 +122,10 @@ func HandleDoctor(rootFolder storage.Folder, opts DoctorOptions, output io.Write
 	result.Pass = result.Failed == 0
 	result.Elapsed = time.Since(startTime).Round(time.Millisecond).String()
 
-	writeDoctorOutput(result, opts.Format, output)
+	if err := writeDoctorOutput(result, opts.Format, output); err != nil {
+		tracelog.ErrorLogger.Printf("Failed to write the report: %v\n", err)
+		return 1
+	}
 
 	if result.Pass {
 		return 0
@@ -662,20 +664,8 @@ func formatDuration(d time.Duration) string {
 	}
 }
 
-func writeDoctorOutput(result *DoctorResult, format string, output io.Writer) {
-	if format == "json" {
-		data, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			fmt.Fprintf(output, `{"error":%q}`, err.Error())
-			return
-		}
-		if _, err := output.Write(append(data, '\n')); err != nil {
-			tracelog.ErrorLogger.Printf("failed to write JSON output: %v", err)
-		}
-		return
-	}
-
-	writeDoctorTextOutput(result, output)
+func writeDoctorOutput(result *DoctorResult, format string, output io.Writer) error {
+	return WriteReport(format, result, func(w io.Writer) { writeDoctorTextOutput(result, w) }, output)
 }
 
 func writeDoctorTextOutput(result *DoctorResult, output io.Writer) {

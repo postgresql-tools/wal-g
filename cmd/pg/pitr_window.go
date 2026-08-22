@@ -57,6 +57,8 @@ var (
 		Long:  pitrWindowLong,
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			tracelog.ErrorLogger.FatalOnError(postgres.ValidateReportFormat(pitrWindowFormat))
+
 			storage, err := internal.ConfigureStorage()
 			tracelog.ErrorLogger.FatalOnError(err)
 
