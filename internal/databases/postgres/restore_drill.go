@@ -4,7 +4,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -257,7 +256,7 @@ func HandleRestoreDrill(rootFolder storage.Folder, opts RestoreDrillOptions, out
 	runFetchPhase(report, opts, backup.Name)
 
 	if !report.failed() {
-		runReplayPhase(report, opts)
+		runReplayPhase(report, opts, false)
 	}
 
 	report.add(rtoPhase(report, opts, time.Since(started)))
@@ -365,7 +364,11 @@ func runFetchPhase(report *RestoreDrillReport, opts RestoreDrillOptions, backupN
 
 // runReplayPhase starts the restored cluster and waits for it to finish
 // recovery, which is the part of an RTO that a fetch alone cannot measure.
-func runReplayPhase(report *RestoreDrillReport, opts RestoreDrillOptions) {
+//
+// leaveRunning keeps the cluster up after recovery. A plain drill has no use
+// for it and stops it immediately; the Neon drill dumps from it next, so
+// stopping here would leave nothing to dump.
+func runReplayPhase(report *RestoreDrillReport, opts RestoreDrillOptions, leaveRunning bool) {
 	phase := DrillPhase{Name: DrillCheckReplay}
 
 	if !opts.StartPostgres {
@@ -422,7 +425,9 @@ func runReplayPhase(report *RestoreDrillReport, opts RestoreDrillOptions) {
 
 	report.add(phase)
 
-	stopDrillCluster(opts)
+	if !leaveRunning {
+		stopDrillCluster(opts)
+	}
 }
 
 // writeRecoveryConfig puts the restored cluster into recovery, in whichever way
@@ -705,18 +710,7 @@ func finishDrill(report *RestoreDrillReport, opts RestoreDrillOptions,
 
 // WriteRestoreDrillReport renders a drill report.
 func WriteRestoreDrillReport(report *RestoreDrillReport, format string, output io.Writer) error {
-	if format == "json" {
-		data, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = output.Write(append(data, '\n'))
-		return err
-	}
-
-	writeRestoreDrillText(report, output)
-
-	return nil
+	return WriteReport(format, report, func(w io.Writer) { writeRestoreDrillText(report, w) }, output)
 }
 
 func writeRestoreDrillText(report *RestoreDrillReport, output io.Writer) {

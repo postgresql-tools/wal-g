@@ -75,6 +75,8 @@ var (
 )
 
 func runRetentionValidate(cmd *cobra.Command, args []string) {
+	tracelog.ErrorLogger.FatalOnError(postgres.ValidateReportFormat(retentionFormat))
+
 	objectives := postgres.RetentionObjectives{
 		Format:      retentionFormat,
 		RetainCount: resolveRetainCount(),

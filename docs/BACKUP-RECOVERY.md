@@ -313,6 +313,32 @@ says otherwise.
 
 Full documentation: [PostgreSQL.md](PostgreSQL.md#restore-test).
 
+## Leaving the restore somewhere you can query it: `neon-drill`
+
+`restore-test` proves the bytes came back. It does not prove the data is right,
+because it deletes the cluster as soon as it has timed it. `neon-drill` runs the
+same rehearsal and then puts the recovered data in a throwaway
+[Neon](https://neon.tech) branch, which is cheap, isolated, and reachable by an
+ordinary connection string — so a person or a test suite can go and look.
+
+It is two-stage by necessity, not by design. A wal-g physical backup cannot be
+restored into Neon: Neon keeps pages in its own pageserver, so there is no data
+directory to write and no replication protocol to stream into. The drill
+restores physically into a scratch directory as usual, starts the cluster, and
+then dumps it logically into the branch. The physical restore remains the thing
+under test; the branch is what it leaves behind.
+
+Two consequences worth knowing before wiring it into cron:
+
+- The Neon load is **not** counted against the RTO. It is a transfer bounded by
+  dump-and-load throughput, and judging it against a recovery budget would fail
+  the drill for reasons unrelated to backup health.
+- A branch is a running compute endpoint. The drill deletes it on every exit
+  path including an interrupt, and `neon-branches` lists any that survived a
+  host that died mid-drill. Treat a non-empty list as something to clean up.
+
+Full documentation: [PostgreSQL.md](PostgreSQL.md#neon-drill).
+
 ## Evidence for an audit: `compliance-report`
 
 `doctor`, `backup-verify`, `retention-validate`, `pitr-window`, and

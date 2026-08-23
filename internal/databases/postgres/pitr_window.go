@@ -3,7 +3,6 @@
 package postgres
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -453,18 +452,7 @@ func HandlePITRWindow(rootFolder storage.Folder, opts PITRWindowOptions, output 
 
 // WritePITRWindowReport renders a window report.
 func WritePITRWindowReport(report *PITRWindowReport, format string, output io.Writer) error {
-	if format == "json" {
-		data, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			return err
-		}
-		_, err = output.Write(append(data, '\n'))
-		return err
-	}
-
-	writePITRWindowText(report, output)
-
-	return nil
+	return WriteReport(format, report, func(w io.Writer) { writePITRWindowText(report, w) }, output)
 }
 
 func writePITRWindowText(report *PITRWindowReport, output io.Writer) {

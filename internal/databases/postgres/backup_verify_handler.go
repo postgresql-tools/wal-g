@@ -6,7 +6,6 @@ import (
 	"archive/tar"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -607,21 +606,9 @@ func verifyTarPart(folder storage.Folder, partName string, crypter crypto.Crypte
 func writeBackupVerifyOutput(result *BackupVerifyResult, format string, output io.Writer, startTime time.Time) {
 	result.Elapsed = time.Since(startTime).Round(time.Millisecond).String()
 
-	switch format {
-	case "json":
-		data, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			fmt.Fprintf(output, `{"error":%q}`, err.Error())
-			return
-		}
-		if _, err := output.Write(data); err != nil {
-			tracelog.ErrorLogger.Printf("failed to write JSON output: %v", err)
-		}
-		if _, err := output.Write([]byte("\n")); err != nil {
-			tracelog.ErrorLogger.Printf("failed to write JSON output: %v", err)
-		}
-	default:
-		writeTextOutput(result, output)
+	err := WriteReport(format, result, func(w io.Writer) { writeTextOutput(result, w) }, output)
+	if err != nil {
+		tracelog.ErrorLogger.Printf("Failed to write the report: %v\n", err)
 	}
 }
 

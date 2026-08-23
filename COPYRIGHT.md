@@ -37,6 +37,10 @@ License (see `LICENSE-MIT`):
 
 - `main.go`, `main_test.go`
 - `cmd/pg/backup_verify.go`
+- `cmd/pg/neon_drill.go`, `cmd/pg/neon_branches.go`
+- `pkg/neon/` (`client.go`, `branch.go`, `client_test.go`)
+- `internal/databases/postgres/neon_drill.go`,
+  `internal/databases/postgres/neon_drill_test.go`
 - `internal/characterization/golden.go`
 - `internal/checksum/checksum_test.go`
 - `internal/crypto/libsodium/cgo_stubs.c`

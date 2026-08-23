@@ -102,6 +102,8 @@ var (
 )
 
 func runRestoreTest(cmd *cobra.Command, args []string) {
+	tracelog.ErrorLogger.FatalOnError(postgres.ValidateReportFormat(restoreTestFormat))
+
 	if len(args) == 1 {
 		restoreTestBackupName = args[0]
 	}

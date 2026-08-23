@@ -60,6 +60,8 @@ var (
 		Long:  backupVerifyLong,
 		Args:  cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			tracelog.ErrorLogger.FatalOnError(postgres.ValidateReportFormat(backupVerifyFormat))
+
 			storage, err := internal.ConfigureStorage()
 			tracelog.ErrorLogger.FatalOnError(err)
 

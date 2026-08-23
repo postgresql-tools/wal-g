@@ -330,13 +330,18 @@ func TestHandlePITRWindow_MinWindowGate(t *testing.T) {
 
 	start := LSN(2 * WalSegmentSize)
 	finish := LSN(3*WalSegmentSize) - 1
+	// The window runs from the backup's finish time to the last WAL segment,
+	// and the segments are written now. Anchoring the backup to a fixed date
+	// made the span widen with the calendar until it cleared any threshold, so
+	// it has to be as recent as the segments are.
+	recent := time.Now().Add(-time.Minute)
 	putPITRBackup(t, root, "base_000000010000000000000002", start, finish,
-		pitrEpoch, pitrEpoch.Add(time.Minute))
+		recent, recent.Add(time.Second))
 	putPITRSegments(t, root, 1, 2, 6)
 
 	buf := &bytes.Buffer{}
-	// The segments are written now, so the recoverable span is seconds wide;
-	// a week-long requirement cannot be met.
+	// The recoverable span is now seconds wide; a week-long requirement
+	// cannot be met.
 	if code := HandlePITRWindow(root, PITRWindowOptions{
 		Format:    "json",
 		MinWindow: 7 * 24 * time.Hour,
